@@ -81,6 +81,8 @@ git diff origin/<base>...origin/<head>
 
 **Critical:** `glab mr diff` / `gh pr diff` is the authoritative source. It reflects the exact state of the MR/PR at the time of the request — including all commits pushed since the branch was opened. Do **not** substitute `git diff` against local files, the working tree, or any branch state. The local working tree may be ahead of, behind, or diverged from the MR. If the CLI command fails, use the `git diff origin/<base>...origin/<head>` fallback with the branches from Step 1 — never diff against local file state.
 
+**Processing order — critical for large diffs:** Do not read the entire diff first and build the JSON second. For large diffs (>200 lines), the earlier files will have scrolled out of active context by the time you are writing JSON for later files, forcing reconstruction from memory. Instead, process one file at a time: read the hunks for a file, immediately write that file's complete JSON entry (including all `lines[]`), then move to the next file.
+
 ### Step 4 — Build the explanation
 
 For each file changed:
