@@ -1,6 +1,6 @@
 # tell
 
-A skill for [Claude Code](https://claude.ai/code), [OpenCode](https://opencode.ai), and [Pi](https://pi.ai) that explains pull request and merge request diffs line-by-line — anchored to the MR description and linked issue requirements — and renders the result as an interactive HTML report.
+A skill for [Claude Code](https://claude.ai/code), [OpenCode](https://opencode.ai), [Cursor](https://cursor.com), [Pi](https://pi.ai), and [50+ more agents](https://github.com/vercel-labs/skills#supported-agents) that explains pull request and merge request diffs line-by-line — anchored to the MR description and linked issue requirements — and renders the result as an interactive HTML report.
 
 Instead of asking *"what did the code change?"*, tell answers *"why did the code change?"* and *"does it actually satisfy all the requirements?"*
 
@@ -113,6 +113,12 @@ Useful for onboarding to a new codebase or language.
 ## Report Output
 
 Reports are written to `/tmp/tell-<N>.html` (or `/tmp/tell-<N>-learn.html` with `--learn`). Re-running the same MR/PR opens the cached report instantly. Pass `--force` to regenerate.
+
+---
+
+## Discovery
+
+Find and explore skills at **[skills.sh](https://skills.sh)**
 
 ---
 
