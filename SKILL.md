@@ -196,6 +196,7 @@ When `idiomatic: false`, `preferred` contains a short code snippet or descriptio
 - `oldNum`: original line number for `ctx`/`del`; `null` for `add`
 - `newNum`: new line number for `ctx`/`add`; `null` for `del`
 - `text`: raw content — **strip the leading `+`, `-`, or space**
+- **All lines must be verbatim from the diff output.** Do not summarize, paraphrase, or invent lines. For large new files, include every line. If the hunk truly cannot fit, insert a single placeholder: `{ "type": "ctx", "oldNum": null, "newNum": null, "text": "... N lines omitted" }` — never fake code.
 
 #### 6b — Inject and open
 
@@ -279,6 +280,7 @@ Ask me anything — reference hunks by number, e.g. "explain hunk 7 further"
 8. **Keep explanations short.** 1–3 sentences per hunk.
 9. **Use CLI tools.** `glab` for GitLab, `gh` for GitHub. No curl, no raw API calls.
 10. **Strip leading +/-/space from line.text.** The viewer renders its own prefix column.
+11. **Never fabricate or summarize diff lines.** Every entry in `lines[]` must be a verbatim line from the actual diff output — no pseudocode, no descriptions, no invented function signatures. If a hunk is genuinely too large to include in full, truncate honestly using a context placeholder: `{ "type": "ctx", "oldNum": null, "newNum": null, "text": "... N lines omitted (show in full diff)" }`. Fabricated lines are worse than omitted lines — they mislead reviewers about what the code actually does.
 
 ## Installation
 
