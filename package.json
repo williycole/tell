@@ -1,6 +1,6 @@
 {
   "name": "@williy_cole/tell",
-  "version": "1.0.1",
+  "version": "1.0.3",
   "description": "Claude Code skill that explains MR/PR diffs line-by-line, anchored to the linked issue, and renders an interactive HTML report.",
   "keywords": [
     "claude-code",
