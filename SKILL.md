@@ -79,6 +79,8 @@ Fallback (either):
 git diff origin/<base>...origin/<head>
 ```
 
+**Critical:** `glab mr diff` / `gh pr diff` is the authoritative source. It reflects the exact state of the MR/PR at the time of the request — including all commits pushed since the branch was opened. Do **not** substitute `git diff` against local files, the working tree, or any branch state. The local working tree may be ahead of, behind, or diverged from the MR. If the CLI command fails, use the `git diff origin/<base>...origin/<head>` fallback with the branches from Step 1 — never diff against local file state.
+
 ### Step 4 — Build the explanation
 
 For each file changed:
