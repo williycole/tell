@@ -4,6 +4,10 @@ A skill for [Claude Code](https://claude.ai/code), [OpenCode](https://opencode.a
 
 Instead of asking *"what did the code change?"*, tell answers *"why did the code change?"* and *"does it actually satisfy all the requirements?"*
 
+![tell viewer](demo/demo.png)
+
+**[Try the interactive demo →](https://williycole.github.io/tell/demo/demo.html)**
+
 ---
 
 ## Features
@@ -41,10 +45,10 @@ Detects which agents you have installed (Claude Code, OpenCode, Pi, Cursor, and 
 If you'd rather do it yourself:
 
 ```bash
-git clone https://github.com/williycole/tell.git ~/.config/ai-configs/tell
-ln -s ~/.config/ai-configs/tell ~/.claude/skills/tell        # Claude Code
-ln -s ~/.config/ai-configs/tell ~/.config/opencode/skills/tell  # OpenCode
-ln -s ~/.config/ai-configs/tell ~/.pi/agent/skills/tell       # Pi
+git clone https://github.com/williycole/tell.git ~/path/to/tell
+ln -s ~/path/to/tell ~/.claude/skills/tell                   # Claude Code
+ln -s ~/path/to/tell ~/.config/opencode/skills/tell          # OpenCode
+ln -s ~/path/to/tell ~/.pi/agent/skills/tell                 # Pi
 ```
 
 ---
