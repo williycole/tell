@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>tell</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script>
+window.TELL_DATA = null; // uses built-in demo data
+</script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body, #root { width: 100%; height: 100%; background: #0e1014;
+    font-family: 'JetBrains Mono', monospace; font-size: 13px; color: #c9d1d9; overflow: hidden; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #0e1014; }
+  ::-webkit-scrollbar-thumb { background: #2a2f3a; border-radius: 3px; }
+  .cov-drawer {
+    position: absolute; bottom: 24px; left: 0; right: 0;
+    height: 42%;
+    background: #0d1018;
+    border-top: 2px solid #e6a817;
+    display: flex; flex-direction: column;
+    z-index: 10;
+    transition: transform 0.18s ease;
+  }
+  .cov-drawer.hidden { transform: translateY(100%); pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const DEMO_DATA = {
+  source: { type: "GL MR", label: "[GL MR]" },
+  title: "Add DuckDB ingest connector with Postgres source support",
+  ref: "!14  ·  #7",
+  issue: { number: 7, title: "Data pipeline: multi-backend ingest with watermark support" },
+  files: [
+    {
+      name: "connector/postgres.go", status: "M", additions: 34, deletions: 6,
+      hunks: [
+        {
+          header: "@@ -3,7 +3,10 @@",
+          lines: [
+            { type:"ctx",  oldNum:3,  newNum:3,  text:"import (" },
+            { type:"ctx",  oldNum:4,  newNum:4,  text:'  "database/sql"' },
+            { type:"ctx",  oldNum:5,  newNum:5,  text:'  "fmt"' },
+            { type:"add",  oldNum:null, newNum:6, text:'  "time"' },
+            { type:"add",  oldNum:null, newNum:7, text:'  "github.com/lib/pq"' },
+            { type:"ctx",  oldNum:6,  newNum:8,  text:")" },
+          ],
+          explanation: {
+            summary: "Add time + pq driver imports",
+            detail: "`time` is needed for the new `Timeout` field on `Config`. `github.com/lib/pq` is the pure-Go Postgres driver — it registers itself with `database/sql` via its `init()`, so importing it here is all that's required to enable Postgres connections.",
+            satisfies: ["req-1 — Postgres source"],
+            flag: null,
+          }
+        },
+        {
+          header: "@@ -18,8 +21,16 @@",
+          lines: [
+            { type:"ctx",  oldNum:18, newNum:21, text:"type Config struct {" },
+            { type:"ctx",  oldNum:19, newNum:22, text:'  Host     string' },
+            { type:"del",  oldNum:20, newNum:null, text:'  Port     int' },
+            { type:"del",  oldNum:21, newNum:null, text:'  Database string' },
+            { type:"add",  oldNum:null, newNum:23, text:'  Port     int            `yaml:"port" default:"5432"`' },
+            { type:"add",  oldNum:null, newNum:24, text:'  Database string         `yaml:"database"`' },
+            { type:"add",  oldNum:null, newNum:25, text:'  SSLMode  string         `yaml:"ssl_mode" default:"disable"`' },
+            { type:"add",  oldNum:null, newNum:26, text:'  Timeout  time.Duration  `yaml:"timeout"`' },
+            { type:"ctx",  oldNum:22, newNum:27, text:'  User     string' },
+            { type:"ctx",  oldNum:23, newNum:28, text:'  Password string' },
+            { type:"ctx",  oldNum:24, newNum:29, text:"}" },
+          ],
+          explanation: {
+            summary: "Config fields get YAML tags + SSLMode/Timeout",
+            detail: "All fields now carry `yaml:` struct tags so they can be populated directly from the project's config file without a manual mapping step. Two new fields: `SSLMode` (defaults to `disable` — required for the staging environment) and `Timeout` which feeds the connection pool limits added in the next hunk.",
+            satisfies: ["req-1 — configurable Postgres source"],
+            flag: null,
+          }
+        },
+        {
+          header: "@@ -41,5 +52,10 @@",
+          lines: [
+            { type:"ctx",  oldNum:41, newNum:52, text:"func Open(cfg Config) (*sql.DB, error) {" },
+            { type:"del",  oldNum:42, newNum:null, text:'  dsn := fmt.Sprintf("host=%s port=%d ...", cfg.Host, cfg.Port)' },
+            { type:"del",  oldNum:43, newNum:null, text:'  db, err := sql.Open("postgres", dsn)' },
+            { type:"add",  oldNum:null, newNum:53, text:'  if cfg.Timeout == 0 { cfg.Timeout = 30 * time.Second }' },
+            { type:"add",  oldNum:null, newNum:54, text:'  db, err := sql.Open("postgres", cfg.DSN())' },
+            { type:"ctx",  oldNum:44, newNum:55, text:'  if err != nil { return nil, err }' },
+            { type:"add",  oldNum:null, newNum:56, text:'  db.SetConnMaxLifetime(cfg.Timeout)' },
+            { type:"add",  oldNum:null, newNum:57, text:'  db.SetMaxOpenConns(25)' },
+            { type:"add",  oldNum:null, newNum:58, text:'  db.SetMaxIdleConns(5)' },
+            { type:"ctx",  oldNum:45, newNum:59, text:"  return db, nil" },
+            { type:"ctx",  oldNum:46, newNum:60, text:"}" },
+          ],
+          explanation: {
+            summary: "Open() uses DSN() + pool limits",
+            detail: "The hardcoded DSN string is replaced with `cfg.DSN()`, removing duplication. After opening, three pool knobs are set: `SetConnMaxLifetime` ties connection recycling to the configured timeout; `SetMaxOpenConns(25)` caps concurrent connections per tenant; `SetMaxIdleConns(5)` keeps a warm pool without waste.",
+            satisfies: ["req-1", "req-4 — connection pooling under load"],
+            flag: null,
+          }
+        }
+      ]
+    },
+    {
+      name: "connector/duckdb.go", status: "A", additions: 48, deletions: 0,
+      hunks: [
+        {
+          header: "@@ -0,0 +1,20 @@",
+          lines: [
+            { type:"add", oldNum:null, newNum:1,  text:"package connector" },
+            { type:"add", oldNum:null, newNum:2,  text:"" },
+            { type:"add", oldNum:null, newNum:3,  text:"import (" },
+            { type:"add", oldNum:null, newNum:4,  text:'  "database/sql"' },
+            { type:"add", oldNum:null, newNum:5,  text:'  "fmt"' },
+            { type:"add", oldNum:null, newNum:6,  text:"" },
+            { type:"add", oldNum:null, newNum:7,  text:'  _ "github.com/marcboeker/go-duckdb"' },
+            { type:"add", oldNum:null, newNum:8,  text:")" },
+            { type:"add", oldNum:null, newNum:9,  text:"" },
+            { type:"add", oldNum:null, newNum:10, text:"type DuckConfig struct {" },
+            { type:"add", oldNum:null, newNum:11, text:'  Path     string `yaml:"path"`' },
+            { type:"add", oldNum:null, newNum:12, text:'  ReadOnly bool   `yaml:"read_only"`' },
+            { type:"add", oldNum:null, newNum:13, text:"}" },
+          ],
+          explanation: {
+            summary: "New file — DuckDB connector",
+            detail: "Brand-new connector sitting alongside Postgres in the same package. The `go-duckdb` driver is imported with a blank identifier — standard practice to register the `\"duckdb\"` driver name with `database/sql` without an explicit reference. `DuckConfig.ReadOnly` prevents write-lock acquisition when multiple pipeline workers share the same `.duckdb` file.",
+            satisfies: ["req-2 — DuckDB sink backend"],
+            flag: null,
+          }
+        }
+      ]
+    },
+    { name: "ingest/pipeline.go", status: "M", additions: 22, deletions: 4, hunks: [
+      {
+        header: "@@ -12,4 +12,8 @@",
+        lines: [
+          { type:"ctx",  oldNum:12, newNum:12, text:"type Pipeline struct {" },
+          { type:"ctx",  oldNum:13, newNum:13, text:"  src    connector.Source" },
+          { type:"del",  oldNum:14, newNum:null, text:"  dst    *sql.DB" },
+          { type:"add",  oldNum:null, newNum:14, text:"  dst    connector.Sink" },
+          { type:"add",  oldNum:null, newNum:15, text:"  batch  int" },
+          { type:"add",  oldNum:null, newNum:16, text:"  watermark string" },
+          { type:"ctx",  oldNum:15, newNum:17, text:"  logger *slog.Logger" },
+          { type:"ctx",  oldNum:16, newNum:18, text:"}" },
+        ],
+        explanation: {
+          summary: "`dst` widened to Sink interface + watermark field",
+          detail: "Replacing `*sql.DB` with `connector.Sink` decouples the pipeline from Postgres — it can now write to DuckDB or any future backend without changing pipeline logic. `watermark` stores the last-seen cursor value so incremental fetches can resume after interruption.",
+          satisfies: ["req-2", "req-3 — watermark-based incremental fetch"],
+          flag: null,
+        }
+      }
+    ]},
+    { name: "config/sources.go", status: "M", additions: 11, deletions: 2, hunks: [] },
+    { name: "go.mod", status: "M", additions: 3, deletions: 0, hunks: [] },
+  ],
+  coverage: [
+    { requirement: "Connect to external Postgres using YAML-configured credentials", status: "covered", note: "Config struct + DSN() + yaml tags in connector/postgres.go" },
+    { requirement: "Write ingest output to DuckDB via new connector backend", status: "covered", note: "connector/duckdb.go — OpenDuck() + Ping() validation" },
+    { requirement: "Incremental fetch via watermark column, resumable after crash", status: "partial", note: "watermark field added to Pipeline but no persistence between restarts yet" },
+    { requirement: "Connection pooling under concurrent tenant load", status: "covered", note: "SetMaxOpenConns(25) + SetMaxIdleConns(5) in Open()" },
+    { requirement: "Log run metrics (rows, duration, errors) to connector status record", status: "missing", note: "ConnectorRun resource not created in this MR" },
+  ],
+  unanchored: [
+    { location: "config/sources.go:44", description: "default_accept(:*) replaced with explicit allowlist — credentials_enc excluded", severity: "harmless" },
+  ]
+};
+
+const DATA = (window.TELL_DATA && typeof window.TELL_DATA === 'object') ? window.TELL_DATA : DEMO_DATA;
+
+const C = {
+  bg:'#0e1014', bgPanel:'#13161b', bgHeader:'#0a0c0f', border:'#2a2f3a', borderFoc:'#e6a817',
+  dimText:'#4a5568', mutedText:'#6b7280', bodyText:'#c9d1d9',
+  addBg:'#0d2818', addFg:'#3fb950', addNumBg:'#196830',
+  delBg:'#2d1117', delFg:'#f85149', delNumBg:'#6b1c22',
+  ctxFg:'#6b7280', hunkHdr:'#1c2438', hunkFg:'#58a6ff',
+  exBg:'#111520', accent:'#e6a817', accentDim:'#7a5a10',
+  green:'#3fb950', red:'#f85149', blue:'#58a6ff', statusBg:'#0a0c10',
+};
+
+const PANEL_DIFF = 0;
+const PANEL_EXPL = 1;
+
+function App() {
+  const [fileIdx, setFileIdx] = React.useState(0);
+  const [focus,   setFocus]   = React.useState(PANEL_DIFF);
+  const [covOpen, setCovOpen] = React.useState(false);
+  const diffRef = React.useRef(null);
+  const explRef = React.useRef(null);
+  const syncingRef = React.useRef(false);
+
+  const files = DATA.files || [];
+  const currentFile = files[fileIdx] || { hunks:[] };
+  const hasCov = (DATA.coverage||[]).length > 0 || (DATA.unanchored||[]).length > 0;
+
+  // ── Sync scroll ──────────────────────────────────────────────────────────
+  const setupSync = React.useCallback(() => {
+    const d = diffRef.current, e = explRef.current;
+    if (!d || !e) return;
+
+    const onDiffScroll = () => {
+      if (syncingRef.current) return;
+      syncingRef.current = true;
+      const pct = d.scrollTop / Math.max(1, d.scrollHeight - d.clientHeight);
+      e.scrollTop = pct * Math.max(1, e.scrollHeight - e.clientHeight);
+      requestAnimationFrame(() => { syncingRef.current = false; });
+    };
+    const onExplScroll = () => {
+      if (syncingRef.current) return;
+      syncingRef.current = true;
+      const pct = e.scrollTop / Math.max(1, e.scrollHeight - e.clientHeight);
+      d.scrollTop = pct * Math.max(1, d.scrollHeight - d.clientHeight);
+      requestAnimationFrame(() => { syncingRef.current = false; });
+    };
+
+    d.addEventListener('scroll', onDiffScroll, { passive: true });
+    e.addEventListener('scroll', onExplScroll, { passive: true });
+    return () => { d.removeEventListener('scroll', onDiffScroll); e.removeEventListener('scroll', onExplScroll); };
+  }, []);
+
+  React.useEffect(() => { return setupSync(); }, [setupSync, fileIdx]);
+
+  // ── Keyboard ─────────────────────────────────────────────────────────────
+  React.useEffect(() => {
+    const scroll = (dir) => {
+      const ref = focus === PANEL_DIFF ? diffRef : explRef;
+      if (ref.current) ref.current.scrollTop += dir * 60;
+    };
+    const halfScroll = (dir) => {
+      const ref = focus === PANEL_DIFF ? diffRef : explRef;
+      if (ref.current) ref.current.scrollTop += dir * (ref.current.clientHeight / 2);
+    };
+    const resetScroll = () => {
+      if (diffRef.current) diffRef.current.scrollTop = 0;
+      if (explRef.current) explRef.current.scrollTop = 0;
+    };
+
+    const handler = (e) => {
+      if (document.activeElement?.tagName === 'INPUT') return;
+
+      // h/l — always navigate files regardless of focus
+      if (e.key === 'h' || e.key === 'ArrowLeft') {
+        if (!covOpen) { setFileIdx(i => Math.max(0, i-1)); resetScroll(); return; }
+      }
+      if (e.key === 'l' || e.key === 'ArrowRight') {
+        if (!covOpen) { setFileIdx(i => Math.min(files.length-1, i+1)); resetScroll(); return; }
+      }
+
+      // Tab — toggle focus between diff and explanation
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        setFocus(f => f === PANEL_DIFF ? PANEL_EXPL : PANEL_DIFF);
+        return;
+      }
+
+      // c — toggle coverage drawer
+      if (e.key === 'c') { setCovOpen(v => !v); return; }
+
+      // Esc — close coverage drawer
+      if (e.key === 'Escape') { setCovOpen(false); return; }
+
+      // j/k/d/u — scroll focused panel
+      if (e.key === 'j' || e.key === 'ArrowDown')  scroll(1);
+      if (e.key === 'k' || e.key === 'ArrowUp')    scroll(-1);
+      if (e.key === 'd') halfScroll(1);
+      if (e.key === 'u') halfScroll(-1);
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [focus, fileIdx, files.length, covOpen]);
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', height:'100vh', width:'100vw', background:C.bg, position:'relative' }}>
+      <TopBar data={DATA} />
+      <FileTabBar files={files} activeIdx={fileIdx}
+        onSelect={(i) => { setFileIdx(i); if(diffRef.current) diffRef.current.scrollTop=0; if(explRef.current) explRef.current.scrollTop=0; }} />
+
+      {/* Main split */}
+      <div style={{ display:'flex', flex:1, overflow:'hidden', minHeight:0 }}>
+
+        {/* DIFF */}
+        <div onClick={() => setFocus(PANEL_DIFF)} style={{
+          flex:'0 0 55%', display:'flex', flexDirection:'column',
+          borderRight:`1px solid ${focus===PANEL_DIFF ? C.borderFoc : C.border}`, overflow:'hidden',
+        }}>
+          <PanelHeader label="DIFF" active={focus===PANEL_DIFF} hint="j/k  d/u  h/l files" />
+          <div ref={diffRef} style={{ flex:1, overflowY:'scroll', overflowX:'auto', background:C.bgPanel }}>
+            {currentFile.hunks && currentFile.hunks.length > 0
+              ? currentFile.hunks.map((h,i) => <DiffHunk key={i} hunk={h} />)
+              : <EmptyState msg="no diff for this file" />}
+          </div>
+        </div>
+
+        {/* EXPLANATION */}
+        <div onClick={() => setFocus(PANEL_EXPL)} style={{
+          flex:1, display:'flex', flexDirection:'column',
+          borderLeft:`1px solid ${focus===PANEL_EXPL ? C.borderFoc : C.border}`, overflow:'hidden',
+        }}>
+          <PanelHeader label="EXPLANATION" active={focus===PANEL_EXPL} hint="j/k  d/u  c coverage" />
+          <div ref={explRef} style={{ flex:1, overflowY:'scroll', background:C.exBg }}>
+            {currentFile.hunks && currentFile.hunks.length > 0
+              ? currentFile.hunks.map((h,i) => <ExplBlock key={i} hunk={h} />)
+              : <EmptyState msg="no explanations yet" />}
+          </div>
+        </div>
+      </div>
+
+      {/* COVERAGE DRAWER */}
+      {hasCov && (
+        <div className={`cov-drawer${covOpen ? '' : ' hidden'}`}>
+          <div style={{ background:C.bgHeader, borderBottom:`1px solid ${C.borderFoc}`,
+            padding:'4px 10px', display:'flex', alignItems:'center', gap:8, flexShrink:0, height:26 }}>
+            <span style={{ color:C.accent, fontWeight:600, fontSize:11, letterSpacing:'0.08em' }}>▸ REQUIREMENTS COVERAGE</span>
+            <span style={{ marginLeft:'auto', color:C.accentDim, fontSize:10 }}>Esc to close</span>
+          </div>
+          <div style={{ flex:1, overflowY:'scroll', padding:'12px 16px' }}>
+            <CoveragePanel data={DATA} />
+          </div>
+        </div>
+      )}
+
+      <StatusBar focus={focus} fileIdx={fileIdx} total={files.length} covOpen={covOpen} hasCov={hasCov} />
+    </div>
+  );
+}
+
+function TopBar({ data }) {
+  const src = data.source || { label:'[LOCAL]' };
+  return (
+    <div style={{ background:C.bgHeader, borderBottom:`1px solid ${C.border}`,
+      padding:'4px 10px', display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
+      <span style={{ color:C.accent, fontWeight:600, letterSpacing:'0.05em' }}>tell</span>
+      <span style={{ color:C.border }}>│</span>
+      <span style={{ color:C.blue, fontWeight:500 }}>{src.label || src.type}</span>
+      <span style={{ color:C.bodyText, flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{data.title}</span>
+      {data.ref && <span style={{ color:C.accentDim, flexShrink:0 }}>{data.ref}</span>}
+      <div style={{ display:'flex', gap:10, color:C.dimText, flexShrink:0, fontSize:11 }}>
+        <Kb>h</Kb><Kb>l</Kb><span style={{marginRight:4}}>files</span>
+        <Kb>j</Kb><Kb>k</Kb><span style={{marginRight:4}}>scroll</span>
+        <Kb>c</Kb><span>coverage</span>
+      </div>
+    </div>
+  );
+}
+
+function Kb({ children }) {
+  return <span style={{ display:'inline-block', background:'#1e2430', border:`1px solid ${C.border}`,
+    borderRadius:3, padding:'0 4px', fontSize:11, color:C.bodyText, marginRight:2 }}>{children}</span>;
+}
+
+function FileTabBar({ files, activeIdx, onSelect }) {
+  const tabsRef = React.useRef(null);
+  const activeRef = React.useRef(null);
+  React.useEffect(() => {
+    if (activeRef.current && tabsRef.current) {
+      const c = tabsRef.current, t = activeRef.current;
+      const l = t.offsetLeft, r = l + t.offsetWidth;
+      if (l < c.scrollLeft) c.scrollLeft = l - 10;
+      else if (r > c.scrollLeft + c.clientWidth) c.scrollLeft = r - c.clientWidth + 10;
+    }
+  }, [activeIdx]);
+  return (
+    <div style={{ background:C.bgHeader, borderBottom:`1px solid ${C.border}`,
+      display:'flex', alignItems:'stretch', flexShrink:0, height:30, overflow:'hidden' }}>
+      <div style={{ padding:'0 8px', display:'flex', alignItems:'center', color:C.dimText,
+        borderRight:`1px solid ${C.border}`, fontSize:11, flexShrink:0, fontWeight:500 }}>
+        FILES ({files.length})
+      </div>
+      <div ref={tabsRef} style={{ display:'flex', alignItems:'stretch', overflowX:'hidden', flex:1 }}>
+        {files.map((f,i) => {
+          const active = i === activeIdx;
+          const sc = f.status==='A' ? C.green : f.status==='D' ? C.red : C.accent;
+          return (
+            <div key={f.name} ref={active ? activeRef : null}
+              onClick={()=>onSelect(i)}
+              style={{ display:'flex', alignItems:'center', gap:5, padding:'0 12px',
+                borderRight:`1px solid ${C.border}`, background:active ? C.bgPanel : 'transparent',
+                cursor:'pointer', borderBottom: active ? `2px solid ${C.accent}` : '2px solid transparent',
+                flexShrink:0 }}>
+              <span style={{ color:sc, fontSize:10, fontWeight:700 }}>{f.status}</span>
+              <span style={{ color:active ? C.bodyText : C.mutedText, fontSize:12, whiteSpace:'nowrap' }}>
+                {(f.name||'').split('/').pop()}
+              </span>
+              <span style={{ color:C.addFg, fontSize:10 }}>+{f.additions||0}</span>
+              {(f.deletions||0) > 0 && <span style={{ color:C.red, fontSize:10 }}>-{f.deletions}</span>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PanelHeader({ label, active, hint }) {
+  return (
+    <div style={{ background:C.bgHeader, borderBottom:`1px solid ${active ? C.borderFoc : C.border}`,
+      padding:'4px 10px', display:'flex', alignItems:'center', gap:8, flexShrink:0, height:26 }}>
+      <span style={{ color:active ? C.accent : C.dimText, fontWeight:600, fontSize:11, letterSpacing:'0.08em' }}>
+        {active ? '▸ ' : ''}{label}
+      </span>
+      {active && <span style={{ color:C.accentDim, fontSize:10, marginLeft:'auto' }}>{hint}</span>}
+    </div>
+  );
+}
+
+function DiffHunk({ hunk }) {
+  return (
+    <div style={{ borderBottom:`1px solid ${C.border}` }}>
+      <div style={{ background:C.hunkHdr, padding:'3px 10px', color:C.hunkFg, fontSize:11,
+        display:'flex', alignItems:'center', gap:8, borderBottom:`1px solid ${C.border}` }}>
+        <span>{hunk.header}</span>
+        {hunk.explanation?.summary && <span style={{ color:C.accentDim }}>— {hunk.explanation.summary}</span>}
+      </div>
+      {(hunk.lines||[]).map((line,i) => <DiffLine key={i} line={line} />)}
+    </div>
+  );
+}
+
+function DiffLine({ line }) {
+  let bg, fg, numBg, prefix;
+  if (line.type==='add')      { bg=C.addBg; fg=C.addFg; numBg=C.addNumBg; prefix='+'; }
+  else if (line.type==='del') { bg=C.delBg; fg=C.delFg; numBg=C.delNumBg; prefix='−'; }
+  else                        { bg='transparent'; fg=C.bodyText; numBg='transparent'; prefix=' '; }
+  const oldN = line.oldNum!=null ? String(line.oldNum).padStart(4) : '    ';
+  const newN = line.newNum!=null ? String(line.newNum).padStart(4) : '    ';
+  return (
+    <div style={{ display:'flex', alignItems:'stretch', background:bg,
+      fontFamily:'JetBrains Mono,monospace', fontSize:12, lineHeight:'20px', minHeight:20 }}>
+      <div style={{ width:40, textAlign:'right', padding:'0 6px', color:line.type==='del'?C.delFg:C.dimText,
+        background:line.type!=='ctx'?numBg:'transparent', flexShrink:0, userSelect:'none', opacity:0.7 }}>{oldN}</div>
+      <div style={{ width:40, textAlign:'right', padding:'0 6px', color:line.type==='add'?C.addFg:C.dimText,
+        background:line.type!=='ctx'?numBg:'transparent', flexShrink:0, userSelect:'none', opacity:0.7,
+        borderRight:`1px solid ${C.border}` }}>{newN}</div>
+      <div style={{ width:18, textAlign:'center', color:fg, flexShrink:0, fontWeight:line.type!=='ctx'?600:400 }}>{prefix}</div>
+      <pre style={{ color:fg, margin:0, padding:'0 6px', whiteSpace:'pre', flex:1, fontFamily:'inherit', fontSize:'inherit' }}>{line.text||' '}</pre>
+    </div>
+  );
+}
+
+function ExplBlock({ hunk }) {
+  const lineCount = (hunk.lines||[]).length;
+  const minH = 28 + lineCount * 20 + 1;
+  const expl = hunk.explanation || {};
+  return (
+    <div style={{ borderBottom:`1px solid ${C.border}`, minHeight:minH,
+      padding:'10px 14px 12px', display:'flex', flexDirection:'column', gap:6 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+        <span style={{ background:C.accentDim, color:C.accent, fontSize:10, fontWeight:700,
+          padding:'1px 6px', borderRadius:2, letterSpacing:'0.06em' }}>HUNK</span>
+        {expl.summary && <span style={{ color:C.accent, fontWeight:600, fontSize:12 }}>{expl.summary}</span>}
+        {expl.flag==='tangential'     && <Tag color="#7a5010" text="⚠ tangential" />}
+        {expl.flag==='non-behavioral' && <Tag color="#1a3a20" text="↺ non-behavioral" />}
+      </div>
+      {(expl.satisfies||[]).length > 0 && (
+        <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+          {expl.satisfies.map((s,i) => (
+            <span key={i} style={{ background:'#0d2818', color:C.addFg, fontSize:10,
+              padding:'1px 6px', borderRadius:2, border:`1px solid ${C.addNumBg}` }}>→ {s}</span>
+          ))}
+        </div>
+      )}
+      <div style={{ color:C.bodyText, lineHeight:'1.65', fontSize:12 }}>
+        {renderDetail(expl.detail||'')}
+      </div>
+    </div>
+  );
+}
+
+function Tag({ color, text }) {
+  return <span style={{ background:color+'33', color, fontSize:10, padding:'1px 6px',
+    borderRadius:2, border:`1px solid ${color}44` }}>{text}</span>;
+}
+
+function renderDetail(text) {
+  return text.split('\n').map((line,i) => {
+    if (!line) return <div key={i} style={{ height:6 }}></div>;
+    return <div key={i}>{renderInline(line)}</div>;
+  });
+}
+
+function renderInline(text) {
+  return text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g).map((part,i) => {
+    if (part.startsWith('`') && part.endsWith('`'))
+      return <code key={i} style={{ background:'#1a2030', color:C.blue, padding:'0 3px',
+        borderRadius:2, fontSize:11, border:`1px solid #1e2a40` }}>{part.slice(1,-1)}</code>;
+    if (part.startsWith('**') && part.endsWith('**'))
+      return <strong key={i} style={{ color:C.bodyText, fontWeight:600 }}>{part.slice(2,-2)}</strong>;
+    return <React.Fragment key={i}>{part}</React.Fragment>;
+  });
+}
+
+function CoveragePanel({ data }) {
+  const coverage   = data.coverage  || [];
+  const unanchored = data.unanchored || [];
+  const icon  = s => s==='covered' ? '✓' : s==='partial' ? '~' : '✗';
+  const color = s => s==='covered' ? C.green : s==='partial' ? C.accent : C.red;
+  return (
+    <div style={{ display:'flex', gap:24 }}>
+      {/* Requirements */}
+      {coverage.length > 0 && (
+        <div style={{ flex:1 }}>
+          <div style={{ color:C.mutedText, fontSize:11, letterSpacing:'0.08em', marginBottom:8 }}>REQUIREMENTS</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+            {coverage.map((row,i) => (
+              <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'6px 8px',
+                background:C.bgPanel, borderRadius:3, border:`1px solid ${C.border}` }}>
+                <span style={{ color:color(row.status), fontWeight:700, fontSize:13, flexShrink:0, width:16 }}>{icon(row.status)}</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ color:C.bodyText, fontSize:12 }}>{row.requirement}</div>
+                  {row.note && <div style={{ color:C.mutedText, fontSize:11, marginTop:2 }}>{row.note}</div>}
+                </div>
+                <span style={{ color:color(row.status), fontSize:10, flexShrink:0,
+                  background:color(row.status)+'18', padding:'1px 6px', borderRadius:2 }}>{row.status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* Unanchored */}
+      {unanchored.length > 0 && (
+        <div style={{ flex:1 }}>
+          <div style={{ color:C.mutedText, fontSize:11, letterSpacing:'0.08em', marginBottom:8 }}>UNANCHORED CHANGES</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+            {unanchored.map((row,i) => (
+              <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'6px 8px',
+                background:C.bgPanel, borderRadius:3, border:`1px solid ${C.border}` }}>
+                <span style={{ color:row.severity==='creep' ? C.red : C.accentDim, fontSize:12, flexShrink:0 }}>
+                  {row.severity==='creep' ? '⚠' : '↺'}
+                </span>
+                <div style={{ flex:1 }}>
+                  <code style={{ color:C.blue, fontSize:11 }}>{row.location}</code>
+                  <div style={{ color:C.bodyText, fontSize:12, marginTop:2 }}>{row.description}</div>
+                </div>
+                <span style={{ color:row.severity==='creep'?C.red:C.mutedText, fontSize:10, flexShrink:0 }}>{row.severity}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EmptyState({ msg }) {
+  return <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
+    height:'100%', color:C.dimText, fontSize:12 }}>{msg}</div>;
+}
+
+function StatusBar({ focus, fileIdx, total, covOpen, hasCov }) {
+
+  const panels = ['DIFF','EXPLANATION'];
+  const hints  = [
+    'j/k scroll  d/u half-page  h/l files  Tab focus expl',
+    'j/k scroll  d/u half-page  h/l files  Tab focus diff',
+  ];
+  const file = (DATA.files||[])[fileIdx] || {};
+  return (
+    <div style={{ background:C.statusBg, borderTop:`1px solid ${C.border}`,
+      padding:'3px 10px', display:'flex', alignItems:'center', gap:14,
+      flexShrink:0, height:24, fontSize:11 }}>
+      <span style={{ color:C.accent, fontWeight:600 }}>FOCUS: {panels[focus]}</span>
+      <span style={{ color:C.border }}>│</span>
+      <span style={{ color:C.mutedText }}>{hints[focus]}</span>
+      {hasCov && (
+        <>
+          <span style={{ color:C.border }}>│</span>
+          <span style={{ color: covOpen ? C.accent : C.dimText }}>
+            <Kb>c</Kb> coverage {covOpen ? '▲' : '▼'}
+          </span>
+        </>
+      )}
+      <div style={{ marginLeft:'auto', display:'flex', gap:10, color:C.dimText }}>
+        <span>file {fileIdx+1}/{total}</span>
+        <span style={{ color:C.border }}>│</span>
+        <span style={{ color:C.green }}>+{file.additions||0}</span>
+        <span style={{ color:C.red }}>-{file.deletions||0}</span>
+      </div>
+    </div>
+  );
+}
+
+
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
