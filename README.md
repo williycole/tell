@@ -30,69 +30,22 @@ Install at least one of:
 
 ## Installation
 
-### npm (recommended)
-
 ```bash
-npm install -g @williy_cole/tell
+npx @williy_cole/tell
 ```
 
-Then register the skill with your agent (see [Agent Setup](#agent-setup) below).
+That's it. Detects which agents you have installed (Claude Code, OpenCode, Pi) and wires them up automatically. Restart your agent and `/tell` is ready.
 
-### git clone
+### Manual setup
+
+If you'd rather do it yourself:
 
 ```bash
 git clone https://github.com/williycole/tell.git ~/.config/ai-configs/tell
+ln -s ~/.config/ai-configs/tell ~/.claude/skills/tell   # Claude Code
+ln -s ~/.config/ai-configs/tell ~/.opencode/skills/tell  # OpenCode
+ln -s ~/.config/ai-configs/tell ~/.pi/agent/skills/tell  # Pi
 ```
-
-### Manual download
-
-Download the repo as a ZIP, extract to `~/.config/ai-configs/tell/`, and follow the [Agent Setup](#agent-setup) steps.
-
----
-
-## Agent Setup
-
-The skill lives at `~/.config/ai-configs/tell/` (or wherever you cloned/installed it). Symlink or point each agent to that directory.
-
-### Claude Code
-
-Add the skill to your Claude Code profile by symlinking into your skills directory:
-
-```bash
-# Default profile
-ln -s ~/.config/ai-configs/tell ~/.claude/skills/tell
-
-# Named profile (e.g. "claude-work")
-ln -s ~/.config/ai-configs/tell ~/.claude-work/skills/tell
-```
-
-Or add it directly in `~/.claude/settings.json`:
-
-```json
-{
-  "skills": [
-    "~/.config/ai-configs/tell"
-  ]
-}
-```
-
-### OpenCode
-
-Point OpenCode at the `SKILL.md`:
-
-```bash
-ln -s ~/.config/ai-configs/tell ~/.opencode/skills/tell
-```
-
-### Pi
-
-```bash
-ln -s ~/.config/ai-configs/tell ~/.pi/agent/skills/tell
-```
-
-### Any other agent
-
-Point it at `~/.config/ai-configs/tell/SKILL.md`. The template is referenced from the same directory, so keep the folder structure intact.
 
 ---
 
