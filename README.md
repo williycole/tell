@@ -31,10 +31,10 @@ Install at least one of:
 ## Installation
 
 ```bash
-npx @williy_cole/tell
+npx skills add williycole/tell
 ```
 
-That's it. Detects which agents you have installed (Claude Code, OpenCode, Pi) and wires them up automatically. Restart your agent and `/tell` is ready.
+Detects which agents you have installed (Claude Code, OpenCode, Pi, Cursor, and [50+ more](https://github.com/vercel-labs/skills#supported-agents)) and wires them up automatically. Restart your agent and `/tell` is ready.
 
 ### Manual setup
 
@@ -42,9 +42,9 @@ If you'd rather do it yourself:
 
 ```bash
 git clone https://github.com/williycole/tell.git ~/.config/ai-configs/tell
-ln -s ~/.config/ai-configs/tell ~/.claude/skills/tell   # Claude Code
-ln -s ~/.config/ai-configs/tell ~/.opencode/skills/tell  # OpenCode
-ln -s ~/.config/ai-configs/tell ~/.pi/agent/skills/tell  # Pi
+ln -s ~/.config/ai-configs/tell ~/.claude/skills/tell        # Claude Code
+ln -s ~/.config/ai-configs/tell ~/.config/opencode/skills/tell  # OpenCode
+ln -s ~/.config/ai-configs/tell ~/.pi/agent/skills/tell       # Pi
 ```
 
 ---

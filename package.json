@@ -25,12 +25,8 @@
   },
   "license": "MIT",
   "author": "williycole",
-  "bin": {
-    "tell-install": "bin/install.js"
-  },
   "files": [
     "SKILL.md",
-    "templates/",
-    "bin/"
+    "templates/"
   ]
 }
