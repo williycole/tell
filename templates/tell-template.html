@@ -1,0 +1,557 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>tell</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script>
+try { window.TELL_DATA = __TELL_DATA_PLACEHOLDER__; } catch(e) { window.TELL_DATA = null; }
+</script>
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body, #root { width: 100%; height: 100%; background: #0e1014;
+    font-family: 'JetBrains Mono', monospace; font-size: 15px; color: #c9d1d9; overflow: hidden; }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #0e1014; }
+  ::-webkit-scrollbar-thumb { background: #2a2f3a; border-radius: 3px; }
+  .cov-drawer {
+    position: absolute; bottom: 24px; left: 0; right: 0;
+    height: 42%;
+    background: #0d1018;
+    border-top: 2px solid #e6a817;
+    display: flex; flex-direction: column;
+    z-index: 10;
+    transition: transform 0.18s ease;
+  }
+  .cov-drawer.hidden { transform: translateY(100%); pointer-events: none; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+
+const DEMO_DATA = {
+  source: { type: "GL MR", label: "[GL MR]" },
+  title: "Demo — run /tell !N to load real data",
+  ref: "!0  ·  #0",
+  issue: { number: 0, title: "Demo issue" },
+  files: [
+    {
+      name: "lib/demo/connector.ex", status: "M", additions: 8, deletions: 2,
+      hunks: [
+        {
+          header: "@@ -24,6 +30,12 @@",
+          lines: [
+            { type:"ctx",  oldNum:24, newNum:30, text:"  type Config struct {" },
+            { type:"ctx",  oldNum:25, newNum:31, text:'    Host     string' },
+            { type:"del",  oldNum:26, newNum:null, text:'    Port     int' },
+            { type:"add",  oldNum:null, newNum:32, text:'    Port     int    `yaml:"port" default:"5432"`' },
+            { type:"add",  oldNum:null, newNum:33, text:'    SSLMode  string `yaml:"ssl_mode"`' },
+            { type:"add",  oldNum:null, newNum:34, text:'    Timeout  time.Duration `yaml:"timeout"`' },
+            { type:"ctx",  oldNum:27, newNum:35, text:'    User     string' },
+            { type:"ctx",  oldNum:28, newNum:36, text:'  }' },
+          ],
+          explanation: {
+            summary: "Config struct gains YAML tags + new fields",
+            detail: "Each field now has `yaml:` struct tags for config-file population. `SSLMode` and `Timeout` are new — they expose TLS and connection-timeout control required by the multi-tenant routing layer described in the issue.",
+            satisfies: ["req-1 — configurable connector"],
+            flag: null,
+          }
+        },
+        {
+          header: "@@ -58,4 +68,9 @@",
+          lines: [
+            { type:"ctx",  oldNum:58, newNum:68, text:"  func Open(cfg Config) (*sql.DB, error) {" },
+            { type:"del",  oldNum:59, newNum:null, text:'    db, err := sql.Open("postgres", buildDSN(cfg))' },
+            { type:"add",  oldNum:null, newNum:69, text:'    if cfg.Timeout == 0 { cfg.Timeout = 30 * time.Second }' },
+            { type:"add",  oldNum:null, newNum:70, text:'    db, err := sql.Open("postgres", cfg.DSN())' },
+            { type:"add",  oldNum:null, newNum:71, text:'    db.SetConnMaxLifetime(cfg.Timeout)' },
+            { type:"add",  oldNum:null, newNum:72, text:'    db.SetMaxOpenConns(25)' },
+            { type:"ctx",  oldNum:60, newNum:73, text:'    return db, nil' },
+            { type:"ctx",  oldNum:61, newNum:74, text:'  }' },
+          ],
+          explanation: {
+            summary: "Open() sets connection pool limits",
+            detail: "The inline DSN build is replaced with `cfg.DSN()`. A 30-second default timeout is applied when none is configured. `SetMaxOpenConns(25)` prevents connection exhaustion under concurrent tenant load — directly addressing the scalability concern in the issue.",
+            satisfies: ["req-1", "req-2 — connection pooling"],
+            flag: null,
+          }
+        }
+      ]
+    },
+    { name: "lib/demo/duckdb.ex", status: "A", additions: 52, deletions: 0, hunks: [] },
+    { name: "lib/demo/pipeline.ex", status: "M", additions: 14, deletions: 3, hunks: [] },
+  ],
+  coverage: [
+    { requirement: "Connect to external Postgres using credentials from data source config", status: "covered", note: "cfg.DSN() uses data_source.host + settings" },
+    { requirement: "Append and replace ingest modes, configurable per connector", status: "covered", note: "ingest_mode attribute passed to DuckDB sidecar as mode field" },
+    { requirement: "Incremental fetch via watermark column", status: "partial", note: "Implementation exists but no test for sidecar-unavailable watermark guard" },
+    { requirement: "Write to DuckDB via Go sidecar (POST /ingest, X-Tenant-ID)", status: "covered", note: "DuckDB.Client.ingest/5, X-Tenant-ID header, /ingest endpoint" },
+    { requirement: "Log run results (rows, duration, errors) to connector status record", status: "missing", note: "ConnectorRun resource not yet created" },
+  ],
+  unanchored: [
+    { location: "lib/data_source.ex:44", description: "default_accept(:*) → explicit list with credentials_enc excluded", severity: "harmless" },
+  ]
+};
+
+const DATA = (window.TELL_DATA && typeof window.TELL_DATA === 'object') ? window.TELL_DATA : DEMO_DATA;
+
+const C = {
+  bg:'#0e1014', bgPanel:'#13161b', bgHeader:'#0a0c0f', border:'#2a2f3a', borderFoc:'#e6a817',
+  dimText:'#4a5568', mutedText:'#6b7280', bodyText:'#c9d1d9',
+  addBg:'#0d2818', addFg:'#3fb950', addNumBg:'#196830',
+  delBg:'#2d1117', delFg:'#f85149', delNumBg:'#6b1c22',
+  ctxFg:'#6b7280', hunkHdr:'#1c2438', hunkFg:'#58a6ff',
+  exBg:'#111520', accent:'#e6a817', accentDim:'#7a5a10',
+  green:'#3fb950', red:'#f85149', blue:'#58a6ff', statusBg:'#0a0c10',
+};
+
+const PANEL_DIFF = 0;
+const PANEL_EXPL = 1;
+
+function App() {
+  const [fileIdx, setFileIdx] = React.useState(0);
+  const [focus,   setFocus]   = React.useState(PANEL_DIFF);
+  const [covOpen, setCovOpen] = React.useState(false);
+  const diffRef = React.useRef(null);
+  const explRef = React.useRef(null);
+  const syncingRef = React.useRef(false);
+
+  const files = DATA.files || [];
+  const currentFile = files[fileIdx] || { hunks:[] };
+  const hasCov = (DATA.coverage||[]).length > 0 || (DATA.unanchored||[]).length > 0;
+  // Global hunk offset — hunks are numbered continuously across all files
+  const hunkOffset = files.slice(0, fileIdx).reduce((sum, f) => sum + (f.hunks||[]).length, 0);
+
+  // ── Sync scroll ──────────────────────────────────────────────────────────
+  const setupSync = React.useCallback(() => {
+    const d = diffRef.current, e = explRef.current;
+    if (!d || !e) return;
+
+    const onDiffScroll = () => {
+      if (syncingRef.current) return;
+      syncingRef.current = true;
+      const pct = d.scrollTop / Math.max(1, d.scrollHeight - d.clientHeight);
+      e.scrollTop = pct * Math.max(1, e.scrollHeight - e.clientHeight);
+      requestAnimationFrame(() => { syncingRef.current = false; });
+    };
+    const onExplScroll = () => {
+      if (syncingRef.current) return;
+      syncingRef.current = true;
+      const pct = e.scrollTop / Math.max(1, e.scrollHeight - e.clientHeight);
+      d.scrollTop = pct * Math.max(1, d.scrollHeight - d.clientHeight);
+      requestAnimationFrame(() => { syncingRef.current = false; });
+    };
+
+    d.addEventListener('scroll', onDiffScroll, { passive: true });
+    e.addEventListener('scroll', onExplScroll, { passive: true });
+    return () => { d.removeEventListener('scroll', onDiffScroll); e.removeEventListener('scroll', onExplScroll); };
+  }, []);
+
+  React.useEffect(() => { return setupSync(); }, [setupSync, fileIdx]);
+
+  // ── Keyboard ─────────────────────────────────────────────────────────────
+  React.useEffect(() => {
+    const scroll = (dir) => {
+      const ref = focus === PANEL_DIFF ? diffRef : explRef;
+      if (ref.current) ref.current.scrollTop += dir * 60;
+    };
+    const halfScroll = (dir) => {
+      const ref = focus === PANEL_DIFF ? diffRef : explRef;
+      if (ref.current) ref.current.scrollTop += dir * (ref.current.clientHeight / 2);
+    };
+    const resetScroll = () => {
+      if (diffRef.current) diffRef.current.scrollTop = 0;
+      if (explRef.current) explRef.current.scrollTop = 0;
+    };
+
+    const handler = (e) => {
+      if (document.activeElement?.tagName === 'INPUT') return;
+
+      // h/l — capture phase + preventDefault ensures no element consumes these first
+      if (e.key === 'h' || e.key === 'ArrowLeft') {
+        if (!covOpen) { e.preventDefault(); setFileIdx(i => Math.max(0, i-1)); resetScroll(); return; }
+      }
+      if (e.key === 'l' || e.key === 'ArrowRight') {
+        if (!covOpen) { e.preventDefault(); setFileIdx(i => Math.min(files.length-1, i+1)); resetScroll(); return; }
+      }
+
+      // Tab — toggle focus between diff and explanation
+      if (e.key === 'Tab') {
+        e.preventDefault();
+        setFocus(f => f === PANEL_DIFF ? PANEL_EXPL : PANEL_DIFF);
+        return;
+      }
+
+      // c — toggle coverage drawer
+      if (e.key === 'c') { setCovOpen(v => !v); return; }
+
+      // Esc — close coverage drawer
+      if (e.key === 'Escape') { setCovOpen(false); return; }
+
+      // j/k/d/u — scroll focused panel
+      if (e.key === 'j' || e.key === 'ArrowDown')  scroll(1);
+      if (e.key === 'k' || e.key === 'ArrowUp')    scroll(-1);
+      if (e.key === 'd') halfScroll(1);
+      if (e.key === 'u') halfScroll(-1);
+    };
+
+    // useCapture:true — fires before any element receives the event,
+    // so focused scrollable divs can't swallow h/l/ArrowLeft/ArrowRight
+    document.addEventListener('keydown', handler, true);
+    return () => document.removeEventListener('keydown', handler, true);
+  }, [focus, fileIdx, files.length, covOpen]);
+
+  return (
+    <div style={{ display:'flex', flexDirection:'column', height:'100vh', width:'100vw', background:C.bg, position:'relative' }}>
+      <TopBar data={DATA} />
+      <FileTabBar files={files} activeIdx={fileIdx}
+        onSelect={(i) => { setFileIdx(i); if(diffRef.current) diffRef.current.scrollTop=0; if(explRef.current) explRef.current.scrollTop=0; }} />
+
+      {/* Main split */}
+      <div style={{ display:'flex', flex:1, overflow:'hidden', minHeight:0 }}>
+
+        {/* DIFF */}
+        <div onClick={() => setFocus(PANEL_DIFF)} style={{
+          flex:'0 0 55%', display:'flex', flexDirection:'column',
+          borderRight:`1px solid ${focus===PANEL_DIFF ? C.borderFoc : C.border}`, overflow:'hidden',
+        }}>
+          <PanelHeader label="DIFF" active={focus===PANEL_DIFF} hint="j/k  d/u  h/l files" />
+          <div ref={diffRef} style={{ flex:1, overflowY:'scroll', overflowX:'auto', background:C.bgPanel }}>
+            {currentFile.hunks && currentFile.hunks.length > 0
+              ? currentFile.hunks.map((h,i) => <DiffHunk key={i} hunk={h} idx={hunkOffset+i+1} />)
+              : <EmptyState msg="no diff for this file" />}
+          </div>
+        </div>
+
+        {/* EXPLANATION */}
+        <div onClick={() => setFocus(PANEL_EXPL)} style={{
+          flex:1, display:'flex', flexDirection:'column',
+          borderLeft:`1px solid ${focus===PANEL_EXPL ? C.borderFoc : C.border}`, overflow:'hidden',
+        }}>
+          <PanelHeader label="EXPLANATION" active={focus===PANEL_EXPL} hint="j/k  d/u  c coverage" />
+          <div ref={explRef} style={{ flex:1, overflowY:'scroll', background:C.exBg }}>
+            {currentFile.hunks && currentFile.hunks.length > 0
+              ? currentFile.hunks.map((h,i) => <ExplBlock key={i} hunk={h} idx={hunkOffset+i+1} />)
+              : <EmptyState msg="no explanations yet" />}
+          </div>
+        </div>
+      </div>
+
+      {/* COVERAGE DRAWER */}
+      {hasCov && (
+        <div className={`cov-drawer${covOpen ? '' : ' hidden'}`}>
+          <div style={{ background:C.bgHeader, borderBottom:`1px solid ${C.borderFoc}`,
+            padding:'4px 10px', display:'flex', alignItems:'center', gap:8, flexShrink:0, height:26 }}>
+            <span style={{ color:C.accent, fontWeight:600, fontSize:15, letterSpacing:'0.08em' }}>▸ REQUIREMENTS COVERAGE</span>
+            <span style={{ marginLeft:'auto', color:C.accentDim, fontSize:14 }}>Esc to close</span>
+          </div>
+          <div style={{ flex:1, overflowY:'scroll', padding:'12px 16px' }}>
+            <CoveragePanel data={DATA} />
+          </div>
+        </div>
+      )}
+
+      <StatusBar focus={focus} fileIdx={fileIdx} total={files.length} covOpen={covOpen} hasCov={hasCov} />
+    </div>
+  );
+}
+
+function TopBar({ data }) {
+  const src = data.source || { label:'[LOCAL]' };
+  return (
+    <div style={{ background:C.bgHeader, borderBottom:`1px solid ${C.border}`,
+      padding:'4px 10px', display:'flex', alignItems:'center', gap:10, flexShrink:0 }}>
+      <span style={{ color:C.accent, fontWeight:600, letterSpacing:'0.05em' }}>tell</span>
+      <span style={{ color:C.border }}>│</span>
+      <span style={{ color:C.blue, fontWeight:500 }}>{src.label || src.type}</span>
+      <span style={{ color:C.bodyText, flex:1, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{data.title}</span>
+      {data.ref && <span style={{ color:C.accentDim, flexShrink:0 }}>{data.ref}</span>}
+      <div style={{ display:'flex', gap:10, color:C.dimText, flexShrink:0, fontSize:15 }}>
+        <Kb>h</Kb><Kb>l</Kb><span style={{marginRight:4}}>files</span>
+        <Kb>j</Kb><Kb>k</Kb><span style={{marginRight:4}}>scroll</span>
+        <Kb>c</Kb><span>coverage</span>
+      </div>
+    </div>
+  );
+}
+
+function Kb({ children }) {
+  return <span style={{ display:'inline-block', background:'#1e2430', border:`1px solid ${C.border}`,
+    borderRadius:3, padding:'0 4px', fontSize:15, color:C.bodyText, marginRight:2 }}>{children}</span>;
+}
+
+function FileTabBar({ files, activeIdx, onSelect }) {
+  const tabsRef = React.useRef(null);
+  const activeRef = React.useRef(null);
+  React.useEffect(() => {
+    if (activeRef.current && tabsRef.current) {
+      const c = tabsRef.current, t = activeRef.current;
+      const l = t.offsetLeft, r = l + t.offsetWidth;
+      if (l < c.scrollLeft) c.scrollLeft = l - 10;
+      else if (r > c.scrollLeft + c.clientWidth) c.scrollLeft = r - c.clientWidth + 10;
+    }
+  }, [activeIdx]);
+  return (
+    <div style={{ background:C.bgHeader, borderBottom:`1px solid ${C.border}`,
+      display:'flex', alignItems:'stretch', flexShrink:0, height:30, overflow:'hidden' }}>
+      <div style={{ padding:'0 8px', display:'flex', alignItems:'center', color:C.dimText,
+        borderRight:`1px solid ${C.border}`, fontSize:15, flexShrink:0, fontWeight:500 }}>
+        FILES ({files.length})
+      </div>
+      <div ref={tabsRef} style={{ display:'flex', alignItems:'stretch', overflowX:'hidden', flex:1 }}>
+        {files.map((f,i) => {
+          const active = i === activeIdx;
+          const sc = f.status==='A' ? C.green : f.status==='D' ? C.red : C.accent;
+          return (
+            <div key={f.name} ref={active ? activeRef : null}
+              onClick={()=>onSelect(i)}
+              style={{ display:'flex', alignItems:'center', gap:5, padding:'0 12px',
+                borderRight:`1px solid ${C.border}`, background:active ? C.bgPanel : 'transparent',
+                cursor:'pointer', borderBottom: active ? `2px solid ${C.accent}` : '2px solid transparent',
+                flexShrink:0 }}>
+              <span style={{ color:sc, fontSize:14, fontWeight:700 }}>{f.status}</span>
+              <span style={{ color:active ? C.bodyText : C.mutedText, fontSize:14, whiteSpace:'nowrap' }}>
+                {(f.name||'').split('/').pop()}
+              </span>
+              <span style={{ color:C.addFg, fontSize:14 }}>+{f.additions||0}</span>
+              {(f.deletions||0) > 0 && <span style={{ color:C.red, fontSize:14 }}>-{f.deletions}</span>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function PanelHeader({ label, active, hint }) {
+  return (
+    <div style={{ background:C.bgHeader, borderBottom:`1px solid ${active ? C.borderFoc : C.border}`,
+      padding:'4px 10px', display:'flex', alignItems:'center', gap:8, flexShrink:0, height:26 }}>
+      <span style={{ color:active ? C.accent : C.dimText, fontWeight:600, fontSize:15, letterSpacing:'0.08em' }}>
+        {active ? '▸ ' : ''}{label}
+      </span>
+      {active && <span style={{ color:C.accentDim, fontSize:14, marginLeft:'auto' }}>{hint}</span>}
+    </div>
+  );
+}
+
+function DiffHunk({ hunk, idx }) {
+  return (
+    <div style={{ borderBottom:`1px solid ${C.border}` }}>
+      <div style={{ background:C.hunkHdr, padding:'3px 10px', color:C.hunkFg, fontSize:15,
+        display:'flex', alignItems:'center', gap:8, borderBottom:`1px solid ${C.border}` }}>
+        <span style={{ background:C.accentDim, color:C.accent, fontWeight:700, fontSize:13,
+          padding:'1px 5px', borderRadius:2, flexShrink:0 }}>hunk {idx}</span>
+        <span>{hunk.header}</span>
+        {hunk.explanation?.summary && <span style={{ color:C.accentDim }}>— {hunk.explanation.summary}</span>}
+      </div>
+      {(hunk.lines||[]).map((line,i) => <DiffLine key={i} line={line} />)}
+    </div>
+  );
+}
+
+function DiffLine({ line }) {
+  let bg, fg, numBg, prefix;
+  if (line.type==='add')      { bg=C.addBg; fg=C.addFg; numBg=C.addNumBg; prefix='+'; }
+  else if (line.type==='del') { bg=C.delBg; fg=C.delFg; numBg=C.delNumBg; prefix='−'; }
+  else                        { bg='transparent'; fg=C.bodyText; numBg='transparent'; prefix=' '; }
+  const oldN = line.oldNum!=null ? String(line.oldNum).padStart(4) : '    ';
+  const newN = line.newNum!=null ? String(line.newNum).padStart(4) : '    ';
+  return (
+    <div style={{ display:'flex', alignItems:'stretch', background:bg,
+      fontFamily:'JetBrains Mono,monospace', fontSize:14, lineHeight:'22px', minHeight:22 }}>
+      <div style={{ width:40, textAlign:'right', padding:'0 6px', color:line.type==='del'?C.delFg:C.dimText,
+        background:line.type!=='ctx'?numBg:'transparent', flexShrink:0, userSelect:'none', opacity:0.7 }}>{oldN}</div>
+      <div style={{ width:40, textAlign:'right', padding:'0 6px', color:line.type==='add'?C.addFg:C.dimText,
+        background:line.type!=='ctx'?numBg:'transparent', flexShrink:0, userSelect:'none', opacity:0.7,
+        borderRight:`1px solid ${C.border}` }}>{newN}</div>
+      <div style={{ width:18, textAlign:'center', color:fg, flexShrink:0, fontWeight:line.type!=='ctx'?600:400 }}>{prefix}</div>
+      <pre style={{ color:fg, margin:0, padding:'0 6px', whiteSpace:'pre', flex:1, fontFamily:'inherit', fontSize:'inherit' }}>{line.text||' '}</pre>
+    </div>
+  );
+}
+
+function LearnBlock({ learn }) {
+  if (!learn) return null;
+  const langColor = { Elixir:'#a56ef5', TypeScript:'#3b82f6', JavaScript:'#f7df1e',
+    React:'#61dafb', CSS:'#38bdf8', SCSS:'#c76494' };
+  const lc = langColor[learn.language] || C.mutedText;
+  return (
+    <div style={{ background:'#0c1020', border:`1px solid #1e2a45`, borderRadius:4,
+      padding:'8px 12px', display:'flex', flexDirection:'column', gap:6, marginTop:2 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+        <span style={{ background:lc+'22', color:lc, fontSize:13, fontWeight:700,
+          padding:'1px 6px', borderRadius:2, letterSpacing:'0.06em' }}>{learn.language}</span>
+        <span style={{ color:lc, fontSize:13, fontWeight:600 }}>{learn.idiom}</span>
+        {learn.idiomatic === false &&
+          <span style={{ background:'#3a100a', color:C.red, fontSize:13,
+            padding:'1px 6px', borderRadius:2, border:`1px solid ${C.red}44` }}>⚠ non-idiomatic</span>}
+      </div>
+      <div style={{ color:'#a0aec0', lineHeight:'1.6', fontSize:14 }}>
+        {renderDetail(learn.learn_detail||'')}
+      </div>
+      {learn.preferred && (
+        <div style={{ borderTop:`1px solid #1e2a45`, paddingTop:6, marginTop:2 }}>
+          <div style={{ color:C.mutedText, fontSize:13, marginBottom:4, letterSpacing:'0.06em' }}>PREFERRED PATTERN</div>
+          <div style={{ color:'#a0aec0', fontSize:14 }}>{renderDetail(learn.preferred)}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExplBlock({ hunk, idx }) {
+  const lineCount = (hunk.lines||[]).length;
+  const minH = 28 + lineCount * 20 + 1;
+  const expl = hunk.explanation || {};
+  return (
+    <div style={{ borderBottom:`1px solid ${C.border}`, minHeight:minH,
+      padding:'10px 14px 12px', display:'flex', flexDirection:'column', gap:6 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+        <span style={{ background:C.accentDim, color:C.accent, fontSize:14, fontWeight:700,
+          padding:'1px 6px', borderRadius:2, letterSpacing:'0.06em' }}>hunk {idx}</span>
+        {expl.summary && <span style={{ color:C.accent, fontWeight:600, fontSize:14 }}>{expl.summary}</span>}
+        {expl.flag==='tangential'     && <Tag color="#7a5010" text="⚠ tangential" />}
+        {expl.flag==='non-behavioral' && <Tag color="#1a3a20" text="↺ non-behavioral" />}
+      </div>
+      {(expl.satisfies||[]).length > 0 && (
+        <div style={{ display:'flex', gap:4, flexWrap:'wrap' }}>
+          {expl.satisfies.map((s,i) => (
+            <span key={i} style={{ background:'#0d2818', color:C.addFg, fontSize:14,
+              padding:'1px 6px', borderRadius:2, border:`1px solid ${C.addNumBg}` }}>→ {s}</span>
+          ))}
+        </div>
+      )}
+      <div style={{ color:C.bodyText, lineHeight:'1.65', fontSize:14 }}>
+        {renderDetail(expl.detail||'')}
+      </div>
+      {expl.learn && <LearnBlock learn={expl.learn} />}
+    </div>
+  );
+}
+
+function Tag({ color, text }) {
+  return <span style={{ background:color+'33', color, fontSize:14, padding:'1px 6px',
+    borderRadius:2, border:`1px solid ${color}44` }}>{text}</span>;
+}
+
+function renderDetail(text) {
+  return text.split('\n').map((line,i) => {
+    if (!line) return <div key={i} style={{ height:6 }}></div>;
+    return <div key={i}>{renderInline(line)}</div>;
+  });
+}
+
+function renderInline(text) {
+  return text.split(/(`[^`]+`|\*\*[^*]+\*\*)/g).map((part,i) => {
+    if (part.startsWith('`') && part.endsWith('`'))
+      return <code key={i} style={{ background:'#1a2030', color:C.blue, padding:'0 3px',
+        borderRadius:2, fontSize:15, border:`1px solid #1e2a40` }}>{part.slice(1,-1)}</code>;
+    if (part.startsWith('**') && part.endsWith('**'))
+      return <strong key={i} style={{ color:C.bodyText, fontWeight:600 }}>{part.slice(2,-2)}</strong>;
+    return <React.Fragment key={i}>{part}</React.Fragment>;
+  });
+}
+
+function CoveragePanel({ data }) {
+  const coverage   = data.coverage  || [];
+  const unanchored = data.unanchored || [];
+  const icon  = s => s==='covered' ? '✓' : s==='partial' ? '~' : '✗';
+  const color = s => s==='covered' ? C.green : s==='partial' ? C.accent : C.red;
+  return (
+    <div style={{ display:'flex', gap:24 }}>
+      {/* Requirements */}
+      {coverage.length > 0 && (
+        <div style={{ flex:1 }}>
+          <div style={{ color:C.mutedText, fontSize:15, letterSpacing:'0.08em', marginBottom:8 }}>REQUIREMENTS</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+            {coverage.map((row,i) => (
+              <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'6px 8px',
+                background:C.bgPanel, borderRadius:3, border:`1px solid ${C.border}` }}>
+                <span style={{ color:color(row.status), fontWeight:700, fontSize:15, flexShrink:0, width:16 }}>{icon(row.status)}</span>
+                <div style={{ flex:1 }}>
+                  <div style={{ color:C.bodyText, fontSize:14 }}>{row.requirement}</div>
+                  {row.note && <div style={{ color:C.mutedText, fontSize:15, marginTop:2 }}>{row.note}</div>}
+                </div>
+                <span style={{ color:color(row.status), fontSize:14, flexShrink:0,
+                  background:color(row.status)+'18', padding:'1px 6px', borderRadius:2 }}>{row.status}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      {/* Unanchored */}
+      {unanchored.length > 0 && (
+        <div style={{ flex:1 }}>
+          <div style={{ color:C.mutedText, fontSize:15, letterSpacing:'0.08em', marginBottom:8 }}>UNANCHORED CHANGES</div>
+          <div style={{ display:'flex', flexDirection:'column', gap:4 }}>
+            {unanchored.map((row,i) => (
+              <div key={i} style={{ display:'flex', gap:10, alignItems:'flex-start', padding:'6px 8px',
+                background:C.bgPanel, borderRadius:3, border:`1px solid ${C.border}` }}>
+                <span style={{ color:row.severity==='creep' ? C.red : C.accentDim, fontSize:14, flexShrink:0 }}>
+                  {row.severity==='creep' ? '⚠' : '↺'}
+                </span>
+                <div style={{ flex:1 }}>
+                  <code style={{ color:C.blue, fontSize:15 }}>{row.location}</code>
+                  <div style={{ color:C.bodyText, fontSize:14, marginTop:2 }}>{row.description}</div>
+                </div>
+                <span style={{ color:row.severity==='creep'?C.red:C.mutedText, fontSize:14, flexShrink:0 }}>{row.severity}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function EmptyState({ msg }) {
+  return <div style={{ display:'flex', alignItems:'center', justifyContent:'center',
+    height:'100%', color:C.dimText, fontSize:14 }}>{msg}</div>;
+}
+
+function StatusBar({ focus, fileIdx, total, covOpen, hasCov }) {
+
+  const panels = ['DIFF','EXPLANATION'];
+  const hints  = [
+    'j/k scroll  d/u half-page  h/l files  Tab focus expl',
+    'j/k scroll  d/u half-page  h/l files  Tab focus diff',
+  ];
+  const file = (DATA.files||[])[fileIdx] || {};
+  return (
+    <div style={{ background:C.statusBg, borderTop:`1px solid ${C.border}`,
+      padding:'3px 10px', display:'flex', alignItems:'center', gap:14,
+      flexShrink:0, height:24, fontSize:15 }}>
+      <span style={{ color:C.accent, fontWeight:600 }}>FOCUS: {panels[focus]}</span>
+      <span style={{ color:C.border }}>│</span>
+      <span style={{ color:C.mutedText }}>{hints[focus]}</span>
+      {hasCov && (
+        <>
+          <span style={{ color:C.border }}>│</span>
+          <span style={{ color: covOpen ? C.accent : C.dimText }}>
+            <Kb>c</Kb> coverage {covOpen ? '▲' : '▼'}
+          </span>
+        </>
+      )}
+      <div style={{ marginLeft:'auto', display:'flex', gap:10, color:C.dimText }}>
+        <span>file {fileIdx+1}/{total}</span>
+        <span style={{ color:C.border }}>│</span>
+        <span style={{ color:C.green }}>+{file.additions||0}</span>
+        <span style={{ color:C.red }}>-{file.deletions||0}</span>
+      </div>
+    </div>
+  );
+}
+
+
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>

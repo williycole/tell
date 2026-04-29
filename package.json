@@ -1,0 +1,32 @@
+{
+  "name": "@williy_cole/tell",
+  "version": "1.0.0",
+  "description": "Claude Code skill that explains MR/PR diffs line-by-line, anchored to the linked issue, and renders an interactive HTML report.",
+  "keywords": [
+    "claude-code",
+    "claude-code-skill",
+    "opencode",
+    "ai-agent",
+    "skill",
+    "code-review",
+    "pull-request",
+    "merge-request",
+    "diff",
+    "github",
+    "gitlab"
+  ],
+  "homepage": "https://github.com/williycole/tell#readme",
+  "bugs": {
+    "url": "https://github.com/williycole/tell/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/williycole/tell.git"
+  },
+  "license": "MIT",
+  "author": "williycole",
+  "files": [
+    "SKILL.md",
+    "templates/"
+  ]
+}
