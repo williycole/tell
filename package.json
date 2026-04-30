@@ -1,6 +1,6 @@
 {
   "name": "@williy_cole/tell",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "Claude Code skill that explains MR/PR diffs line-by-line, anchored to the linked issue, and renders an interactive HTML report.",
   "keywords": [
     "claude-code",
@@ -25,8 +25,18 @@
   },
   "license": "MIT",
   "author": "williycole",
+  "scripts": {
+    "test": "node --require ts-node/register --test tell-parse.test.ts",
+    "parse": "ts-node tell-parse.ts"
+  },
   "files": [
     "SKILL.md",
-    "templates/"
-  ]
+    "templates/",
+    "tell-parse.ts"
+  ],
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.0.0"
+  }
 }
