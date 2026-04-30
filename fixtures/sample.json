@@ -1,0 +1,342 @@
+{
+  "source": { "type": "GL MR", "label": "[GL MR]" },
+  "title": "Add HTTP data source connector with incremental sync",
+  "ref": "!12  ·  #47",
+  "issue": { "number": 47, "title": "HTTP connector with watermark-based incremental fetch" },
+  "flags": { "learn": true },
+  "files": [
+    {
+      "name": "lib/stratum/cipher.ex",
+      "status": "A",
+      "additions": 38,
+      "deletions": 0,
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,38 @@",
+          "hunkStartOld": 0, "hunkStartNew": 1, "hunkLinesOld": 0, "hunkLinesNew": 38,
+          "lines": [
+            { "type": "add", "oldNum": null, "newNum": 1,  "text": "defmodule Stratum.Cipher do" },
+            { "type": "add", "oldNum": null, "newNum": 2,  "text": "  @moduledoc \"\"\"" },
+            { "type": "add", "oldNum": null, "newNum": 3,  "text": "  AES-256-GCM encryption for at-rest credentials." },
+            { "type": "add", "oldNum": null, "newNum": 4,  "text": "  \"\"\"" },
+            { "type": "add", "oldNum": null, "newNum": 5,  "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 6,  "text": "  @aad \"stratum_v1\"" },
+            { "type": "add", "oldNum": null, "newNum": 7,  "text": "  @iv_bytes 12" },
+            { "type": "add", "oldNum": null, "newNum": 8,  "text": "  @tag_bytes 16" },
+            { "type": "add", "oldNum": null, "newNum": 9,  "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 10, "text": "  @spec encrypt(String.t()) :: String.t()" },
+            { "type": "add", "oldNum": null, "newNum": 11, "text": "  def encrypt(plaintext) when is_binary(plaintext) do" },
+            { "type": "add", "oldNum": null, "newNum": 12, "text": "    key = fetch_key!()" },
+            { "type": "add", "oldNum": null, "newNum": 13, "text": "    iv = :crypto.strong_rand_bytes(@iv_bytes)" },
+            { "type": "add", "oldNum": null, "newNum": 14, "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 15, "text": "    {ciphertext, tag} =" },
+            { "type": "add", "oldNum": null, "newNum": 16, "text": "      :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, plaintext, @aad, @tag_bytes, true)" },
+            { "type": "add", "oldNum": null, "newNum": 17, "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 18, "text": "    Base.encode64(iv <> tag <> ciphertext)" },
+            { "type": "add", "oldNum": null, "newNum": 19, "text": "  end" },
+            { "type": "add", "oldNum": null, "newNum": 20, "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 21, "text": "  @spec decrypt(String.t()) :: {:ok, String.t()} | :error" },
+            { "type": "add", "oldNum": null, "newNum": 22, "text": "  def decrypt(encoded) when is_binary(encoded) do" },
+            { "type": "add", "oldNum": null, "newNum": 23, "text": "    key = fetch_key!()" },
+            { "type": "add", "oldNum": null, "newNum": 24, "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 25, "text": "    <<iv::binary-size(@iv_bytes), tag::binary-size(@tag_bytes), ciphertext::binary>> =" },
+            { "type": "add", "oldNum": null, "newNum": 26, "text": "      Base.decode64!(encoded)" },
+            { "type": "add", "oldNum": null, "newNum": 27, "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 28, "text": "    case :crypto.crypto_one_time_aead(:aes_256_gcm, key, iv, ciphertext, @aad, tag, false) do" },
+            { "type": "add", "oldNum": null, "newNum": 29, "text": "      :error    -> :error" },
+            { "type": "add", "oldNum": null, "newNum": 30, "text": "      plaintext -> {:ok, plaintext}" },
+            { "type": "add", "oldNum": null, "newNum": 31, "text": "    end" },
+            { "type": "add", "oldNum": null, "newNum": 32, "text": "  end" },
+            { "type": "add", "oldNum": null, "newNum": 33, "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 34, "text": "  defp fetch_key! do" },
+            { "type": "add", "oldNum": null, "newNum": 35, "text": "    :stratum" },
+            { "type": "add", "oldNum": null, "newNum": 36, "text": "    |> Application.fetch_env!(:encryption_key)" },
+            { "type": "add", "oldNum": null, "newNum": 37, "text": "    |> Base.decode64!()" },
+            { "type": "add", "oldNum": null, "newNum": 38, "text": "  end" },
+            { "type": "add", "oldNum": null, "newNum": 39, "text": "end" }
+          ],
+          "explanation": {
+            "summary": "New AES-256-GCM cipher module",
+            "detail": "New module wrapping Erlang's `:crypto` with a random 12-byte IV per call. `iv || tag || ciphertext` is Base64-encoded for storage. Required by the issue to avoid persisting API keys in plaintext.",
+            "satisfies": ["req-1"],
+            "flag": null,
+            "learn": {
+              "language": "Elixir",
+              "idiom": "binary pattern matching with byte-size specifiers",
+              "idiomatic": true,
+              "learn_detail": "`<<iv::binary-size(12), tag::binary-size(16), rest::binary>>` destructures a raw binary by exact byte counts in one match — no manual slicing or index arithmetic needed. Standard Elixir pattern for parsing packed binary formats like crypto payloads, network frames, or file headers.",
+              "preferred": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "lib/stratum/sources/http_adapter.ex",
+      "status": "A",
+      "additions": 55,
+      "deletions": 0,
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,55 @@",
+          "hunkStartOld": 0, "hunkStartNew": 1, "hunkLinesOld": 0, "hunkLinesNew": 55,
+          "lines": [
+            { "type": "add", "oldNum": null, "newNum": 1,  "text": "defmodule Stratum.Sources.HttpAdapter do" },
+            { "type": "add", "oldNum": null, "newNum": 2,  "text": "  @behaviour Stratum.Sources.Adapter" },
+            { "type": "add", "oldNum": null, "newNum": 3,  "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 4,  "text": "  @impl true" },
+            { "type": "add", "oldNum": null, "newNum": 5,  "text": "  def fetch(%{settings: settings, cursor: cursor}) do" },
+            { "type": "add", "oldNum": null, "newNum": 6,  "text": "    url = Map.fetch!(settings, \"url\")" },
+            { "type": "add", "oldNum": null, "newNum": 7,  "text": "    headers = build_headers(settings)" },
+            { "type": "add", "oldNum": null, "newNum": 8,  "text": "    params = build_params(settings, cursor)" },
+            { "type": "add", "oldNum": null, "newNum": 9,  "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 10, "text": "    case Req.get(url, headers: headers, params: params) do" },
+            { "type": "add", "oldNum": null, "newNum": 11, "text": "      {:ok, %{status: 200, body: body}} -> {:ok, body}" },
+            { "type": "add", "oldNum": null, "newNum": 12, "text": "      {:ok, %{status: status}}          -> {:error, {:http_error, status}}" },
+            { "type": "add", "oldNum": null, "newNum": 13, "text": "      {:error, reason}                  -> {:error, reason}" },
+            { "type": "add", "oldNum": null, "newNum": 14, "text": "    end" },
+            { "type": "add", "oldNum": null, "newNum": 15, "text": "  end" },
+            { "type": "add", "oldNum": null, "newNum": 16, "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 17, "text": "  # No cursor — first run, fetch from beginning" },
+            { "type": "add", "oldNum": null, "newNum": 18, "text": "  defp build_params(settings, nil) do" },
+            { "type": "add", "oldNum": null, "newNum": 19, "text": "    %{limit: Map.get(settings, \"page_size\", 100)}" },
+            { "type": "add", "oldNum": null, "newNum": 20, "text": "  end" },
+            { "type": "add", "oldNum": null, "newNum": 21, "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 22, "text": "  # Cursor present — incremental fetch from last watermark" },
+            { "type": "add", "oldNum": null, "newNum": 23, "text": "  defp build_params(settings, cursor) do" },
+            { "type": "add", "oldNum": null, "newNum": 24, "text": "    %{" },
+            { "type": "add", "oldNum": null, "newNum": 25, "text": "      since: cursor," },
+            { "type": "add", "oldNum": null, "newNum": 26, "text": "      limit: Map.get(settings, \"page_size\", 100)" },
+            { "type": "add", "oldNum": null, "newNum": 27, "text": "    }" },
+            { "type": "add", "oldNum": null, "newNum": 28, "text": "  end" },
+            { "type": "add", "oldNum": null, "newNum": 29, "text": "end" }
+          ],
+          "explanation": {
+            "summary": "HTTP adapter — two-clause incremental fetch",
+            "detail": "`build_params/2` dispatches on whether `cursor` is `nil` (first run, no `since` param) or a value (incremental, pass `since: cursor`). Pattern-matched clauses replace an `if cursor` branch — each clause declares exactly the params it needs.",
+            "satisfies": ["req-2", "req-3"],
+            "flag": null,
+            "learn": {
+              "language": "Elixir",
+              "idiom": "multiple function clauses for pattern-based dispatch",
+              "idiomatic": true,
+              "learn_detail": "`build_params/2` has two heads matching on `nil` vs a bound value in the second argument. Elixir matches top-to-bottom and selects the first clause whose pattern fits — no `if/cond` chain needed. Coming from other languages this looks like function overloading.",
+              "preferred": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "lib/stratum/pipeline.ex",
+      "status": "M",
+      "additions": 22,
+      "deletions": 8,
+      "hunks": [
+        {
+          "header": "@@ -18,10 +18,18 @@",
+          "hunkStartOld": 18, "hunkStartNew": 18, "hunkLinesOld": 10, "hunkLinesNew": 18,
+          "lines": [
+            { "type": "ctx", "oldNum": 18, "newNum": 18, "text": "  attributes do" },
+            { "type": "ctx", "oldNum": 19, "newNum": 19, "text": "    uuid_primary_key(:id)" },
+            { "type": "ctx", "oldNum": 20, "newNum": 20, "text": "" },
+            { "type": "del", "oldNum": 21, "newNum": null, "text": "    attribute(:source_type, :string, allow_nil?: false, public?: true)" },
+            { "type": "ctx", "oldNum": 22, "newNum": 21, "text": "    attribute(:schedule, :string, public?: true)" },
+            { "type": "add", "oldNum": null, "newNum": 22, "text": "    attribute(:settings, :map, default: %{}, public?: true)" },
+            { "type": "add", "oldNum": null, "newNum": 23, "text": "    attribute(:ingest_mode, :string, allow_nil?: false, default: \"append\", public?: true)" },
+            { "type": "add", "oldNum": null, "newNum": 24, "text": "    attribute(:cursor, Stratum.SyncCursor, default: %{}, public?: true)" },
+            { "type": "ctx", "oldNum": 23, "newNum": 25, "text": "" },
+            { "type": "ctx", "oldNum": 24, "newNum": 26, "text": "    create_timestamp(:inserted_at)" },
+            { "type": "ctx", "oldNum": 25, "newNum": 27, "text": "    update_timestamp(:updated_at)" },
+            { "type": "ctx", "oldNum": 26, "newNum": 28, "text": "  end" }
+          ],
+          "explanation": {
+            "summary": "Drop source_type; add settings, ingest_mode, cursor",
+            "detail": "Removes `:source_type` (now inferred from the linked data source record). Adds `settings` for adapter config, `ingest_mode` for append/replace, and `cursor` typed as `Stratum.SyncCursor` — an embedded resource that persists watermark state as JSONB.",
+            "satisfies": ["req-2", "req-3"],
+            "flag": null,
+            "learn": {
+              "language": "Elixir",
+              "idiom": "embedded Ash resource as attribute type",
+              "idiomatic": true,
+              "learn_detail": "`attribute(:cursor, Stratum.SyncCursor, ...)` uses an embedded Ash resource as a column type. Ash serializes it to JSONB automatically — typed, validated nested data inside a JSON column without a separate table or join.",
+              "preferred": null
+            }
+          }
+        },
+        {
+          "header": "@@ -44,7 +52,13 @@",
+          "hunkStartOld": 44, "hunkStartNew": 52, "hunkLinesOld": 7, "hunkLinesNew": 13,
+          "lines": [
+            { "type": "ctx", "oldNum": 44, "newNum": 52, "text": "  actions do" },
+            { "type": "ctx", "oldNum": 45, "newNum": 53, "text": "    defaults([:read, :create, :update, :destroy])" },
+            { "type": "del", "oldNum": 46, "newNum": null, "text": "    default_accept(:*)" },
+            { "type": "add", "oldNum": null, "newNum": 54, "text": "    default_accept([:schedule, :settings, :ingest_mode, :cursor, :data_source_id])" },
+            { "type": "ctx", "oldNum": 47, "newNum": 55, "text": "" },
+            { "type": "del", "oldNum": 48, "newNum": null, "text": "    action :sync do" },
+            { "type": "del", "oldNum": 49, "newNum": null, "text": "      run(fn _input, _context -> :ok end)" },
+            { "type": "del", "oldNum": 50, "newNum": null, "text": "    end" },
+            { "type": "add", "oldNum": null, "newNum": 56, "text": "    action :sync do" },
+            { "type": "add", "oldNum": null, "newNum": 57, "text": "      argument(:run_id, :uuid, allow_nil?: false)" },
+            { "type": "add", "oldNum": null, "newNum": 58, "text": "      run(Stratum.Pipeline.SyncRunner)" },
+            { "type": "add", "oldNum": null, "newNum": 59, "text": "    end" },
+            { "type": "ctx", "oldNum": 51, "newNum": 60, "text": "  end" }
+          ],
+          "explanation": {
+            "summary": "Wire :sync action to SyncRunner module",
+            "detail": "Replaces the no-op stub with `run(Stratum.Pipeline.SyncRunner)` — passes the module atom as the action implementation. `default_accept` narrows from `:*` to an explicit allowlist, excluding internal fields like `status` from external writes.",
+            "satisfies": ["req-1", "req-2", "req-3", "req-4"],
+            "flag": null,
+            "learn": {
+              "language": "Elixir",
+              "idiom": "modules as first-class values",
+              "idiomatic": true,
+              "learn_detail": "`run(Stratum.Pipeline.SyncRunner)` passes a module atom as a value — Ash calls `SyncRunner.run/3` on it at runtime. No instantiation or wrapping needed. Passing module atoms is the idiomatic Elixir pattern for strategy/dependency injection.",
+              "preferred": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "priv/repo/migrations/20260430120000_create_sync_runs.exs",
+      "status": "A",
+      "additions": 24,
+      "deletions": 0,
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,24 @@",
+          "hunkStartOld": 0, "hunkStartNew": 1, "hunkLinesOld": 0, "hunkLinesNew": 24,
+          "lines": [
+            { "type": "add", "oldNum": null, "newNum": 1,  "text": "defmodule Stratum.Repo.Migrations.CreateSyncRuns do" },
+            { "type": "add", "oldNum": null, "newNum": 2,  "text": "  use Ecto.Migration" },
+            { "type": "add", "oldNum": null, "newNum": 3,  "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 4,  "text": "  def up do" },
+            { "type": "add", "oldNum": null, "newNum": 5,  "text": "    create table(:sync_runs, primary_key: false) do" },
+            { "type": "add", "oldNum": null, "newNum": 6,  "text": "      add :id, :binary_id, primary_key: true" },
+            { "type": "add", "oldNum": null, "newNum": 7,  "text": "      add :pipeline_id, references(:pipelines, type: :binary_id, on_delete: :delete_all), null: false" },
+            { "type": "add", "oldNum": null, "newNum": 8,  "text": "      add :status, :string, null: false" },
+            { "type": "add", "oldNum": null, "newNum": 9,  "text": "      add :rows_synced, :integer" },
+            { "type": "add", "oldNum": null, "newNum": 10, "text": "      add :duration_ms, :integer" },
+            { "type": "add", "oldNum": null, "newNum": 11, "text": "      add :error, :text" },
+            { "type": "add", "oldNum": null, "newNum": 12, "text": "      add :started_at, :utc_datetime, null: false" },
+            { "type": "add", "oldNum": null, "newNum": 13, "text": "      add :finished_at, :utc_datetime" },
+            { "type": "add", "oldNum": null, "newNum": 14, "text": "    end" },
+            { "type": "add", "oldNum": null, "newNum": 15, "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 16, "text": "    create index(:sync_runs, [:pipeline_id])" },
+            { "type": "add", "oldNum": null, "newNum": 17, "text": "    create index(:sync_runs, [:status])" },
+            { "type": "add", "oldNum": null, "newNum": 18, "text": "  end" },
+            { "type": "add", "oldNum": null, "newNum": 19, "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 20, "text": "  def down do" },
+            { "type": "add", "oldNum": null, "newNum": 21, "text": "    drop table(:sync_runs)" },
+            { "type": "add", "oldNum": null, "newNum": 22, "text": "  end" },
+            { "type": "add", "oldNum": null, "newNum": 23, "text": "end" }
+          ],
+          "explanation": {
+            "summary": "Create sync_runs audit table",
+            "detail": "`pipeline_id` uses `references/2` with `on_delete: :delete_all` so Postgres cascades when a pipeline is deleted. Indexes on both `pipeline_id` (query by pipeline) and `status` (query failed runs). All timing fields nullable except `started_at`.",
+            "satisfies": ["req-4"],
+            "flag": null,
+            "learn": {
+              "language": "Elixir",
+              "idiom": "Ecto migration references with on_delete cascade",
+              "idiomatic": true,
+              "learn_detail": "`references(:pipelines, on_delete: :delete_all)` creates a DB-level FK with cascade delete — Postgres removes child rows when the parent is deleted. Without this, deleting a pipeline with existing sync_runs would raise a FK constraint violation.",
+              "preferred": null
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "test/stratum/pipeline_sync_test.exs",
+      "status": "A",
+      "additions": 64,
+      "deletions": 0,
+      "hunks": [
+        {
+          "header": "@@ -0,0 +1,64 @@",
+          "hunkStartOld": 0, "hunkStartNew": 1, "hunkLinesOld": 0, "hunkLinesNew": 64,
+          "lines": [
+            { "type": "add", "oldNum": null, "newNum": 1,  "text": "defmodule Stratum.PipelineSyncTest do" },
+            { "type": "add", "oldNum": null, "newNum": 2,  "text": "  use Stratum.DataCase, async: false" },
+            { "type": "add", "oldNum": null, "newNum": 3,  "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 4,  "text": "  describe \":sync action\" do" },
+            { "type": "add", "oldNum": null, "newNum": 5,  "text": "    test \"successful sync creates a success SyncRun\", %{pipeline: pipeline} do" },
+            { "type": "add", "oldNum": null, "newNum": 6,  "text": "      assert :ok = trigger_sync(pipeline)" },
+            { "type": "add", "oldNum": null, "newNum": 7,  "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 8,  "text": "      [run] = Repo.all(SyncRun)" },
+            { "type": "add", "oldNum": null, "newNum": 9,  "text": "      assert run.status == \"success\"" },
+            { "type": "add", "oldNum": null, "newNum": 10, "text": "      assert run.rows_synced > 0" },
+            { "type": "add", "oldNum": null, "newNum": 11, "text": "    end" },
+            { "type": "add", "oldNum": null, "newNum": 12, "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 13, "text": "    test \"upstream unavailable logs error run\", %{pipeline: pipeline} do" },
+            { "type": "add", "oldNum": null, "newNum": 14, "text": "      Req.Test.stub(:upstream, fn conn ->" },
+            { "type": "add", "oldNum": null, "newNum": 15, "text": "        Req.Test.transport_error(conn, :econnrefused)" },
+            { "type": "add", "oldNum": null, "newNum": 16, "text": "      end)" },
+            { "type": "add", "oldNum": null, "newNum": 17, "text": "" },
+            { "type": "add", "oldNum": null, "newNum": 18, "text": "      assert {:error, _} = trigger_sync(pipeline)" },
+            { "type": "add", "oldNum": null, "newNum": 19, "text": "      [run] = Repo.all(SyncRun)" },
+            { "type": "add", "oldNum": null, "newNum": 20, "text": "      assert run.status == \"error\"" },
+            { "type": "add", "oldNum": null, "newNum": 21, "text": "      assert run.error =~ \"econnrefused\"" },
+            { "type": "add", "oldNum": null, "newNum": 22, "text": "    end" },
+            { "type": "add", "oldNum": null, "newNum": 23, "text": "  end" },
+            { "type": "add", "oldNum": null, "newNum": 24, "text": "end" }
+          ],
+          "explanation": {
+            "summary": "Integration tests: success and upstream failure",
+            "detail": "Two tests cover the happy path (SyncRun logged with `status: \"success\"`) and transport failure (`Req.Test.transport_error` simulates `:econnrefused`, asserts `status: \"error\"` and error message captured). Uses `Req.Test.stub` so no real HTTP calls are made.",
+            "satisfies": ["req-1", "req-2", "req-3", "req-4"],
+            "flag": null,
+            "learn": {
+              "language": "Elixir",
+              "idiom": "Req.Test.transport_error for network failure simulation",
+              "idiomatic": true,
+              "learn_detail": "`Req.Test.transport_error(conn, :econnrefused)` simulates a transport-level failure — no HTTP response is returned at all. This tests the `{:error, _}` branch in `Req.get/2`, which is distinct from a non-200 HTTP response. Critical for verifying error-run logging under connection refusal.",
+              "preferred": null
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "coverage": [
+    {
+      "requirement": "req-1: Credentials stored encrypted, decrypted at fetch time",
+      "status": "covered",
+      "note": "Stratum.Cipher.encrypt/1 + decrypt/1 wrap :crypto AES-256-GCM. HttpAdapter calls decrypt before building request headers."
+    },
+    {
+      "requirement": "req-2: Adapter supports both append and replace ingest modes",
+      "status": "covered",
+      "note": "ingest_mode attribute on Pipeline + SyncRunner passes it to the storage layer."
+    },
+    {
+      "requirement": "req-3: Incremental sync uses a watermark cursor to skip already-synced rows",
+      "status": "covered",
+      "note": "SyncCursor embedded resource + cursor column + build_params/2 passes since: cursor when present. Cursor only advances on success."
+    },
+    {
+      "requirement": "req-4: Sync run results logged (status, rows, duration, error)",
+      "status": "covered",
+      "note": "sync_runs table + SyncRun resource created at run start, updated to success/error with all fields."
+    },
+    {
+      "requirement": "req-5: Cursor round-trip test (DateTime serialization through JSONB)",
+      "status": "partial",
+      "note": "Success and failure paths tested. DateTime cursor round-trip test not included in this fixture."
+    }
+  ],
+  "unanchored": [
+    {
+      "location": "lib/stratum/application.ex:12",
+      "description": "Adds :stratum_http to supervised children — startup wiring, not part of MR scope.",
+      "severity": "harmless"
+    },
+    {
+      "location": "config/test.exs:8",
+      "description": "Adds Req.Test plug config for :upstream stub key — test scaffolding only.",
+      "severity": "harmless"
+    }
+  ]
+}

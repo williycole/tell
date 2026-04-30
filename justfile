@@ -1,6 +1,10 @@
 default:
   @just --list
 
+# Inject fixture JSON into template and open in browser (local dev)
+dev fixture="fixtures/sample.json":
+  node scripts/dev.js {{fixture}}
+
 # Init git, create GitHub repo, and push initial commit
 setup:
   git init

@@ -12,6 +12,9 @@ try { window.TELL_DATA = __TELL_DATA_PLACEHOLDER__; } catch(e) { window.TELL_DAT
 <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
 <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" crossorigin="anonymous">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js" crossorigin="anonymous"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/elixir.min.js" crossorigin="anonymous"></script>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body, #root { width: 100%; height: 100%; background: #0e1014;
@@ -110,6 +113,24 @@ const C = {
   exBg:'#111520', accent:'#e6a817', accentDim:'#7a5a10',
   green:'#3fb950', red:'#f85149', blue:'#58a6ff', statusBg:'#0a0c10',
 };
+
+function detectLang(filename) {
+  if (!filename) return null;
+  const ext = (filename.split('.').pop() || '').toLowerCase();
+  const map = {
+    ex:'elixir', exs:'elixir',
+    ts:'typescript', tsx:'typescript',
+    js:'javascript', jsx:'javascript',
+    css:'css', scss:'scss',
+    py:'python', rb:'ruby', go:'go', rs:'rust',
+    sql:'sql', sh:'bash', bash:'bash',
+    json:'json', yaml:'yaml', yml:'yaml',
+    md:'markdown', html:'xml', xml:'xml',
+  };
+  const lang = map[ext] || null;
+  if (!lang || !window.hljs) return null;
+  return window.hljs.getLanguage(lang) ? lang : null;
+}
 
 const PANEL_DIFF = 0;
 const PANEL_EXPL = 1;
@@ -224,7 +245,7 @@ function App() {
           <PanelHeader label="DIFF" active={focus===PANEL_DIFF} hint="j/k  d/u  h/l files" />
           <div ref={diffRef} style={{ flex:1, overflowY:'scroll', overflowX:'auto', background:C.bgPanel }}>
             {currentFile.hunks && currentFile.hunks.length > 0
-              ? currentFile.hunks.map((h,i) => <DiffHunk key={i} hunk={h} idx={hunkOffset+i+1} />)
+              ? currentFile.hunks.map((h,i) => <DiffHunk key={i} hunk={h} idx={hunkOffset+i+1} filename={currentFile.name} />)
               : <EmptyState msg="no diff for this file" />}
           </div>
         </div>
@@ -341,7 +362,8 @@ function PanelHeader({ label, active, hint }) {
   );
 }
 
-function DiffHunk({ hunk, idx }) {
+function DiffHunk({ hunk, idx, filename }) {
+  const lang = detectLang(filename);
   return (
     <div style={{ borderBottom:`1px solid ${C.border}` }}>
       <div style={{ background:C.hunkHdr, padding:'3px 10px', color:C.hunkFg, fontSize:15,
@@ -351,18 +373,25 @@ function DiffHunk({ hunk, idx }) {
         <span>{hunk.header}</span>
         {hunk.explanation?.summary && <span style={{ color:C.accentDim }}>— {hunk.explanation.summary}</span>}
       </div>
-      {(hunk.lines||[]).map((line,i) => <DiffLine key={i} line={line} />)}
+      {(hunk.lines||[]).map((line,i) => <DiffLine key={i} line={line} lang={lang} />)}
     </div>
   );
 }
 
-function DiffLine({ line }) {
+function DiffLine({ line, lang }) {
   let bg, fg, numBg, prefix;
   if (line.type==='add')      { bg=C.addBg; fg=C.addFg; numBg=C.addNumBg; prefix='+'; }
   else if (line.type==='del') { bg=C.delBg; fg=C.delFg; numBg=C.delNumBg; prefix='−'; }
   else                        { bg='transparent'; fg=C.bodyText; numBg='transparent'; prefix=' '; }
   const oldN = line.oldNum!=null ? String(line.oldNum).padStart(4) : '    ';
   const newN = line.newNum!=null ? String(line.newNum).padStart(4) : '    ';
+
+  let highlighted = null;
+  if (lang && window.hljs && line.text) {
+    try { highlighted = window.hljs.highlight(line.text, { language:lang, ignoreIllegals:true }).value; }
+    catch(_) {}
+  }
+
   return (
     <div style={{ display:'flex', alignItems:'stretch', background:bg,
       fontFamily:'JetBrains Mono,monospace', fontSize:14, lineHeight:'22px', minHeight:22 }}>
@@ -372,7 +401,11 @@ function DiffLine({ line }) {
         background:line.type!=='ctx'?numBg:'transparent', flexShrink:0, userSelect:'none', opacity:0.7,
         borderRight:`1px solid ${C.border}` }}>{newN}</div>
       <div style={{ width:18, textAlign:'center', color:fg, flexShrink:0, fontWeight:line.type!=='ctx'?600:400 }}>{prefix}</div>
-      <pre style={{ color:fg, margin:0, padding:'0 6px', whiteSpace:'pre', flex:1, fontFamily:'inherit', fontSize:'inherit' }}>{line.text||' '}</pre>
+      <pre style={{ color:C.bodyText, margin:0, padding:'0 6px', whiteSpace:'pre', flex:1, fontFamily:'inherit', fontSize:'inherit' }}>
+        {highlighted
+          ? <code dangerouslySetInnerHTML={{ __html:highlighted }} style={{ fontFamily:'inherit', fontSize:'inherit' }} />
+          : (line.text||' ')}
+      </pre>
     </div>
   );
 }

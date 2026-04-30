@@ -130,6 +130,69 @@ Find and explore skills at **[skills.sh](https://skills.sh)**
 
 ---
 
+## Local Development
+
+No agent or CLI run needed — just inject a fixture and open in the browser.
+
+### Setup
+
+```bash
+git clone https://github.com/williycole/tell.git
+cd tell
+npm install
+```
+
+### Run the dev viewer
+
+```bash
+npm run dev
+# or
+just dev
+```
+
+Reads `fixtures/sample.json`, injects it into `templates/tell-template.html`, writes `demo/dev.html`, and opens it in the browser. Edit the template and re-run to see changes instantly.
+
+Pass a different fixture:
+
+```bash
+node scripts/dev.js fixtures/my-fixture.json
+just dev fixtures/my-fixture.json
+```
+
+### Add a fixture
+
+Create `fixtures/<name>.json` with the [Tell JSON schema](#report-output). Use `fixtures/sample.json` as a reference — it covers all line types (`ctx`/`add`/`del`), learn blocks, all coverage statuses, and unanchored entries.
+
+Good fixtures to add:
+- A PR with only deletions
+- A renamed file
+- A large hunk that uses the `... N lines omitted` placeholder
+- A `--learn` report for a non-Elixir language
+
+### Run parser tests
+
+```bash
+npm test
+```
+
+Tests live in `tell-parse.test.ts` and use the built-in `node:test` runner (no extra deps).
+
+### Test with a real MR before publishing
+
+1. Symlink your local clone into your agent's skills directory:
+   ```bash
+   ln -sf ~/path/to/tell ~/.claude-work/skills/tell   # Claude Code
+   ln -sf ~/path/to/tell ~/.pi/agent/skills/tell       # Pi
+   ```
+2. Restart the agent.
+3. Run `/tell !N --force` — it will use your local `SKILL.md` and `templates/tell-template.html`.
+4. When satisfied, remove the symlink and re-install from npm:
+   ```bash
+   npx skills add williycole/tell
+   ```
+
+---
+
 ## Contributing
 
 Bug reports and pull requests welcome at [github.com/williycole/tell](https://github.com/williycole/tell/issues).
