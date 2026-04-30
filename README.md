@@ -30,6 +30,10 @@ Install at least one of:
 - **GitHub:** [GitHub CLI (`gh`)](https://cli.github.com/) — `brew install gh`
 - **GitLab:** [GitLab CLI (`glab`)](https://gitlab.com/gitlab-org/cli) — `brew install glab`
 
+Also required:
+
+- **[ts-node](https://typestrong.org/ts-node/)** — `npm install -g ts-node typescript` (used by the diff parser)
+
 ---
 
 ## Installation
@@ -95,7 +99,7 @@ After the HTML report opens in your browser, the agent stays in conversation —
 
 1. **Fetch MR/PR** — pulls title, description, branch info via `gh` or `glab`
 2. **Fetch linked issue** — extracts requirements from any `Closes #N` / `Refs #N` reference
-3. **Get the diff** — via `gh pr diff`, `glab mr diff`, or `git diff` fallback
+3. **Get the diff** — runs `git diff origin/<base>...origin/<head>` locally and pipes it through `tell-parse.ts`, which deterministically computes every line number, hunk boundary, and change count — the model never touches these values
 4. **Explain each hunk** — 1–3 sentences per hunk focused on intent, not syntax
 5. **Coverage check** — every requirement mapped to `covered` / `partial` / `missing`; unanchored changes flagged as `harmless` or `creep`
 6. **Render report** — injects the JSON into the HTML template, writes to `/tmp/tell-N.html`, opens in browser

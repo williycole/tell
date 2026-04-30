@@ -19,22 +19,42 @@ After generating the explanation, renders the result as an interactive HTML repo
 
 ## Inputs
 
-The user provides one of:
+Tell operates in two modes depending on what you pass:
+
+### MR/PR mode
 - A GitLab MR: `/tell !42`
 - A GitHub PR: `/tell #42` (in a GitHub repo context)
 - Nothing — detect the MR/PR for the current branch automatically
 
-**Flags** (combinable):
-- `--force` — bypass cache and regenerate
-- `--learn` — add language idiom annotations to each hunk (auto-detects language from file extension)
-
-Examples: `/tell !42 --learn`, `/tell !42 --learn --force`
+Requirements come from the MR/PR description and linked issue. Diff comes from `git diff origin/<base>...origin/<head>`.
 
 If no number is given, run `glab mr list --state=opened --source-branch=$(git branch --show-current)` (or `gh pr list`) to find it. If still ambiguous, ask once.
 
+### Spec mode
+- A single file: `/tell SPEC.md`
+- A directory of planning docs: `/tell /prd`
+
+Requirements come from the file(s) you point at. Diff comes from local changes (`git diff HEAD`). If there are no local changes, fall back to `git diff origin/main...HEAD` (or `origin/master...HEAD`).
+
+Use this before a PR exists — to validate that your local work satisfies a spec or PRD — or to check a group of planning documents against a branch.
+
+**Flags** (combinable, both modes):
+- `--force` — bypass cache and regenerate
+- `--learn` — add language idiom annotations to each hunk (auto-detects language from file extension)
+
+Examples: `/tell !42 --learn`, `/tell SPEC.md --force`, `/tell /prd --learn`
+
 ## Process
 
-### Step 1 — Detect source and fetch MR/PR
+---
+
+**The two modes diverge here. Follow the branch that matches the input.**
+
+---
+
+## MR/PR mode
+
+### Step 1 — Fetch MR/PR metadata
 
 **GitLab:**
 ```bash
@@ -62,26 +82,92 @@ gh issue view <N> --json number,title,body
 
 Extract: title, description, acceptance criteria. Summarize requirements in 3–5 bullet points. Give each a short id: `req-1`, `req-2`, etc.
 
-### Step 3 — Get the diff
+### Step 3 — Get the diff via git + parser script
 
-**GitLab:**
+The parser script (`tell-parse.ts`, located in `SKILL_DIR`) owns all line number computation. The model must never compute `oldNum`, `newNum`, `additions`, or `deletions` manually — it copies them verbatim from parser output.
+
+**Step 3a — Ensure origin is current**
+
 ```bash
-glab mr diff <N>
+git fetch origin
 ```
 
-**GitHub:**
+If `git fetch origin` fails, stop immediately and report the error to the user:
+
+> "`git fetch origin` failed: [error output]. Cannot get an accurate diff without reaching the remote. Check your network connection or VPN and retry."
+
+Do not proceed to Step 3b.
+
+**Step 3b — Run the full diff through the parser**
+
 ```bash
-gh pr diff <N>
+git diff origin/<base>...origin/<head> | ts-node <SKILL_DIR>/tell-parse.ts
 ```
 
-Fallback (either):
+This outputs a `DiffFile[]` JSON array. Each element contains:
+- `name`, `oldName`, `status`, `additions`, `deletions`
+- `hunks[]` — each with `header`, `hunkStartOld`, `hunkStartNew`, `hunkLinesOld`, `hunkLinesNew`, `lines[]`
+- Each line: `{ type, oldNum, newNum, text }` — **text has no leading `+`/`-`/space**
+
+Copy this output directly into the `files[]` section of the Tell JSON. Do not recompute or adjust any field. The only thing the model adds is `explanation` for each hunk.
+
+---
+
+## Spec mode
+
+### Step 1 — Read requirements from the spec file(s)
+
+**Single file:**
+Read the file directly. Extract requirements, acceptance criteria, goals, or constraints. Summarize in 3–5 bullet points. Give each a short id: `req-1`, `req-2`, etc.
+
+**Directory (`/tell /prd`):**
 ```bash
-git diff origin/<base>...origin/<head>
+ls <dir>
+```
+Read each file in turn. Merge all requirements into a single flat list, noting which file each came from (e.g. `req-1 [prd/auth.md]`).
+
+Set `source.type` to `"spec"` and `source.label` to `"[SPEC]"` in the output JSON. Set `ref` to the file path(s). Set `issue` to `{ "number": null, "title": "<filename or dir>" }`.
+
+### Step 2 — Get the diff via git + parser script
+
+**Step 2a — Pre-flight: check for uncommitted changes**
+
+```bash
+git status --short
 ```
 
-**Critical:** `glab mr diff` / `gh pr diff` is the authoritative source. It reflects the exact state of the MR/PR at the time of the request — including all commits pushed since the branch was opened. Do **not** substitute `git diff` against local files, the working tree, or any branch state. The local working tree may be ahead of, behind, or diverged from the MR. If the CLI command fails, use the `git diff origin/<base>...origin/<head>` fallback with the branches from Step 1 — never diff against local file state.
+If there are uncommitted changes, warn the user:
 
-**Processing order — critical for large diffs:** Do not read the entire diff first and build the JSON second. For large diffs (>200 lines), the earlier files will have scrolled out of active context by the time you are writing JSON for later files, forcing reconstruction from memory. Instead, process one file at a time: read the hunks for a file, immediately write that file's complete JSON entry (including all `lines[]`), then move to the next file.
+> "You have uncommitted changes. The diff will reflect committed changes only — local edits won't appear. Continue? (y/n)"
+
+Stop and wait for confirmation. If they say no, end the skill.
+
+**Step 2b — Check for local changes**
+
+```bash
+git diff HEAD --stat
+```
+
+If there are changes, use them:
+```bash
+git diff HEAD | ts-node <SKILL_DIR>/tell-parse.ts
+```
+
+If there are no local changes (clean working tree and index), fall back to branch changes vs main:
+```bash
+git diff origin/main...HEAD | ts-node <SKILL_DIR>/tell-parse.ts
+```
+Try `origin/master` if `origin/main` doesn't exist.
+
+If `git fetch origin` is needed first, run it — and if it fails, report the error and stop (same rule as MR mode).
+
+**Step 2c — Copy parser output into `files[]`**
+
+Same as MR mode Step 3b — copy verbatim, add `explanation` per hunk.
+
+---
+
+## Both modes continue here
 
 ### Step 4 — Build the explanation
 
@@ -125,11 +211,11 @@ After all files:
 ```json
 {
   "source": {
-    "type": "GL MR",
-    "label": "[GL MR]"
+    "type": "GL MR | GH PR | spec",
+    "label": "[GL MR] | [GH PR] | [SPEC]"
   },
-  "title": "<MR/PR title>",
-  "ref": "!<N>  ·  #<issue N>",
+  "title": "<MR/PR title, or spec filename/dir>",
+  "ref": "!<N>  ·  #<issue N>  (MR/PR) | <filepath>  (spec)",
   "issue": {
     "number": 0,
     "title": "<issue title>"
@@ -146,6 +232,10 @@ After all files:
       "hunks": [
         {
           "header": "<@@ -X,Y +A,B @@>",
+          "hunkStartOld": 0,
+          "hunkStartNew": 0,
+          "hunkLinesOld": 0,
+          "hunkLinesNew": 0,
           "lines": [
             {
               "type": "<ctx|add|del>",
@@ -196,12 +286,11 @@ After all files:
 When `idiomatic: false`, `preferred` contains a short code snippet or description of what the idiomatic version looks like.
 
 **Line rules:**
+- `lines[]` comes entirely from parser output — copy it verbatim. Do not recompute, adjust, or supplement.
 - `type`: `ctx` = unchanged context, `add` = added line, `del` = removed line
-- `oldNum`: original line number for `ctx`/`del`; `null` for `add`
-- `newNum`: new line number for `ctx`/`add`; `null` for `del`
-- `text`: raw content — **strip the leading `+`, `-`, or space**
-- **All lines must be verbatim from the diff output.** Do not summarize, paraphrase, or invent lines. For large new files, include every line. If the hunk truly cannot fit, insert a single placeholder: `{ "type": "ctx", "oldNum": null, "newNum": null, "text": "... N lines omitted" }` — never fake code.
-- **Transcribe directly — do not reconstruct from memory.** When building `lines[]`, copy each line character-for-character from the diff output you received. Do not re-derive or rewrite lines from your understanding of what the file contains. Even if you have read the file or know the codebase, the `lines[]` array must come from the diff, not from recall.
+- `oldNum` / `newNum`: set by the parser. The model never touches these.
+- `text`: already stripped of leading `+`/`-`/space by the parser.
+- If a hunk is too large to include in full (e.g. a 500-line new file), insert a single placeholder where the omitted lines would be: `{ "type": "ctx", "oldNum": null, "newNum": null, "text": "... N lines omitted" }` — never fabricate code.
 
 #### 6b — Inject and open
 
@@ -284,16 +373,22 @@ Ask me anything — reference hunks by number, e.g. "explain hunk 7 further"
 7. **Don't invent requirements.** Only use what's in the issue and MR description.
 8. **Keep explanations short.** 1–3 sentences per hunk.
 9. **Use CLI tools.** `glab` for GitLab, `gh` for GitHub. No curl, no raw API calls.
-10. **Strip leading +/-/space from line.text.** The viewer renders its own prefix column.
-11. **Never fabricate or summarize diff lines.** Every entry in `lines[]` must be a verbatim line copied character-for-character from the diff output — no pseudocode, no descriptions, no invented function signatures, no reconstruction from memory or file knowledge. If a hunk is genuinely too large to include in full, truncate honestly using a context placeholder: `{ "type": "ctx", "oldNum": null, "newNum": null, "text": "... N lines omitted (show in full diff)" }`. Fabricated lines are worse than omitted lines — they mislead reviewers about what the code actually does. The model having read the file or knowing the codebase is not a substitute for transcribing the diff.
+10. **`lines[]` comes from the parser, not the model.** Run `tell-parse.ts` on the raw git diff and copy its output. Never compute `oldNum`, `newNum`, `additions`, `deletions`, or line text yourself — the parser is the single source of truth for all mechanical diff data.
+11. **Never fabricate diff lines.** If the parser output is unavailable (e.g. ts-node missing), stop and tell the user rather than reconstructing from memory. Fabricated lines mislead reviewers and are worse than omitted lines. When a hunk is genuinely too large, use a placeholder: `{ "type": "ctx", "oldNum": null, "newNum": null, "text": "... N lines omitted" }`.
 
 ## Installation
 
 ```
 ~/.config/ai-configs/tell/
 ├── SKILL.md
+├── tell-parse.ts
 └── templates/
     └── tell-template.html
+```
+
+`tell-parse.ts` requires `ts-node` on PATH. Install globally if not present:
+```bash
+npm install -g ts-node typescript
 ```
 
 Symlink into your agent's skills directory — wherever your agent loads skills from. For example:
